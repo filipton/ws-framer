@@ -58,6 +58,7 @@ pub fn start_server(ip: &str) -> Result<()> {
             }
 
             println!("read_n: {read_n}");
+            parse_ws_frame(&buf[..n])?;
         }
     }
 
@@ -85,4 +86,43 @@ fn construct_http_resp(
         .join("\r\n");
 
     format!("HTTP/{http_ver} {status_code} {status_text}\r\n{headers_str}\r\n\r\n")
+}
+
+fn parse_ws_frame(buf: &[u8]) -> Result<()> {
+    let fin = (buf[0] & 0b10000000) >> 7;
+    let rsv1 = (buf[0] & 0b01000000) >> 6;
+    let rsv2 = (buf[0] & 0b00100000) >> 5;
+    let rsv3 = (buf[0] & 0b00010000) >> 4;
+    let opcode = buf[0] & 0b00001111;
+    let mask = (buf[1] & 0b10000000) >> 7;
+    let mut payload_len = (buf[1] & 0b01111111) as u64;
+
+    let mut offset = 2;
+    if payload_len == 126 {
+        payload_len = u16::from_be_bytes(buf[2..4].try_into().unwrap()) as u64;
+        offset += 2;
+    } else if payload_len == 127 {
+        payload_len = u64::from_be_bytes(buf[2..10].try_into().unwrap());
+        offset += 8;
+    }
+
+    let masking_key = match mask {
+        1 => {
+            let key = &buf[offset..offset + 4];
+            offset += 4;
+            Some(key)
+        }
+        _ => None,
+    };
+
+    println!("fin: {fin}");
+    println!("rsv1: {rsv1}");
+    println!("rsv2: {rsv2}");
+    println!("rsv3: {rsv3}");
+    println!("opcode: 0b{opcode:04b}");
+    println!("mask: {mask}");
+    println!("payload_len: {payload_len}");
+    println!("masking key: {masking_key:02X?}");
+
+    Ok(())
 }
