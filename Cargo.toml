@@ -8,5 +8,6 @@ anyhow = "1.0.89"
 base64 = "0.22.1"
 clap = { version = "4.5.18", features = ["derive"] }
 httparse = "1.9.5"
+rand = "0.8.5"
 sha1 = "0.10.6"
 tungstenite = "0.24.0"

@@ -485,6 +485,7 @@ dependencies = [
  "base64",
  "clap",
  "httparse",
+ "rand",
  "sha1",
  "tungstenite",
 ]

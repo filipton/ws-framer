@@ -1,10 +1,26 @@
-use std::u16;
-
-use anyhow::Result;
-
 use crate::structs::WsFrameHeader;
+use anyhow::Result;
+use base64::prelude::*;
+use rand::Rng;
+use std::{collections::HashMap, io::{Read, Write}, net::TcpStream, u16};
 
 pub fn start_client(ip: &str) -> Result<()> {
+    let mut headers = HashMap::new();
+    headers.insert("Host".to_string(), ip.to_string());
+    headers.insert("Connection".to_string(), "Upgrade".to_string());
+    headers.insert("Upgrade".to_string(), "websocket".to_string());
+    headers.insert("Sec-WebSocket-Version".to_string(), "13".to_string());
+    headers.insert("Sec-WebSocket-Key".to_string(), generate_sec_ws_key());
+    let http_req = generate_http_req("GET", "/", "1.1", headers);
+
+    let mut client = TcpStream::connect(ip)?;
+    client.write_all(http_req.as_bytes())?;
+
+    let mut buf = [0; 1024];
+    let n = client.read(&mut buf)?;
+    println!("resp_n: {n}");
+    println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
+
     let ws_frame = generate_ws_frame(
         WsFrameHeader {
             fin: true,
@@ -18,9 +34,10 @@ pub fn start_client(ip: &str) -> Result<()> {
         },
         b"Lorem",
     );
+    client.write_all(&ws_frame)?;
     println!("{ws_frame:02X?}");
-    return Ok(());
 
+    /*
     println!("Trying to connect to: {ip}...");
     let (mut socket, resp) = tungstenite::connect(ip)?;
 
@@ -39,7 +56,7 @@ pub fn start_client(ip: &str) -> Result<()> {
 
     std::thread::sleep(std::time::Duration::from_secs(5));
     socket.close(None)?;
-
+    */
     Ok(())
 }
 
@@ -79,4 +96,25 @@ fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
     }
 
     tmp
+}
+
+fn generate_sec_ws_key() -> String {
+    let mut ws_key = [0u8; 16];
+    rand::thread_rng().fill(&mut ws_key);
+    BASE64_STANDARD.encode(ws_key)
+}
+
+fn generate_http_req(
+    method: &str,
+    path: &str,
+    http_ver: &str,
+    headers: HashMap<String, String>,
+) -> String {
+    let headers_str = headers
+        .iter()
+        .map(|(k, v)| format!("{k}: {v}"))
+        .collect::<Vec<_>>()
+        .join("\r\n");
+
+    format!("{method} {path} HTTP/{http_ver}\r\n{headers_str}\r\n\r\n")
 }
