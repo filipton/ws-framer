@@ -51,6 +51,7 @@ pub fn start_server(ip: &str) -> Result<()> {
         println!("resp: {resp:?}");
         stream.write_all(resp.as_bytes())?;
 
+        let mut buf = [0; 4096];
         loop {
             let read_n = stream.read(&mut buf)?;
             if read_n == 0 {
@@ -58,7 +59,7 @@ pub fn start_server(ip: &str) -> Result<()> {
             }
 
             println!("read_n: {read_n}");
-            parse_ws_frame(&buf[..n])?;
+            parse_ws_frame(&mut buf[..read_n])?;
         }
     }
 
@@ -88,7 +89,7 @@ fn construct_http_resp(
     format!("HTTP/{http_ver} {status_code} {status_text}\r\n{headers_str}\r\n\r\n")
 }
 
-fn parse_ws_frame(buf: &[u8]) -> Result<()> {
+fn parse_ws_frame(buf: &mut [u8]) -> Result<()> {
     let fin = (buf[0] & 0b10000000) >> 7;
     let rsv1 = (buf[0] & 0b01000000) >> 6;
     let rsv2 = (buf[0] & 0b00100000) >> 5;
@@ -108,7 +109,8 @@ fn parse_ws_frame(buf: &[u8]) -> Result<()> {
 
     let masking_key = match mask {
         1 => {
-            let key = &buf[offset..offset + 4];
+            let mut key = [0; 4];
+            key.copy_from_slice(&buf[offset..offset + 4]);
             offset += 4;
             Some(key)
         }
@@ -124,5 +126,15 @@ fn parse_ws_frame(buf: &[u8]) -> Result<()> {
     println!("payload_len: {payload_len}");
     println!("masking key: {masking_key:02X?}");
 
+    let payload = &mut buf[offset..offset + payload_len as usize];
+    if let Some(masking_key) = masking_key {
+        for (i, x) in payload.iter_mut().enumerate() {
+            let key = masking_key[i % 4];
+            *x ^= key;
+        }
+    }
+
+    println!("payload: {:02X?}", &payload);
+    println!("payload str: {:?}", core::str::from_utf8(&payload));
     Ok(())
 }
