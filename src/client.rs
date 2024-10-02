@@ -1,8 +1,13 @@
 use crate::structs::WsFrameHeader;
 use anyhow::Result;
 use base64::prelude::*;
-use rand::Rng;
-use std::{collections::HashMap, io::{Read, Write}, net::TcpStream, u16};
+use rand::{Rng, RngCore};
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    net::TcpStream,
+    u16,
+};
 
 pub fn start_client(ip: &str) -> Result<()> {
     let mut headers = HashMap::new();
@@ -29,10 +34,27 @@ pub fn start_client(ip: &str) -> Result<()> {
             rsv3: false,
             opcode: 0b0001,
             mask: true,
-            masking_key: [0x13, 0x81, 0xd5, 0x59],
+            masking_key: generate_masking_key(),
             payload_len: 5,
         },
         b"Lorem",
+    );
+    client.write_all(&ws_frame)?;
+    println!("{ws_frame:02X?}");
+
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let ws_frame = generate_ws_frame(
+        WsFrameHeader {
+            fin: true,
+            rsv1: false,
+            rsv2: false,
+            rsv3: false,
+            opcode: 0b1000,
+            mask: true,
+            masking_key: generate_masking_key(),
+            payload_len: 0,
+        },
+        &[],
     );
     client.write_all(&ws_frame)?;
     println!("{ws_frame:02X?}");
@@ -102,6 +124,10 @@ fn generate_sec_ws_key() -> String {
     let mut ws_key = [0u8; 16];
     rand::thread_rng().fill(&mut ws_key);
     BASE64_STANDARD.encode(ws_key)
+}
+
+fn generate_masking_key() -> [u8; 4] {
+    rand::thread_rng().next_u32().to_be_bytes()
 }
 
 fn generate_http_req(
