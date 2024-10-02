@@ -1,6 +1,26 @@
+use std::u16;
+
 use anyhow::Result;
 
+use crate::structs::WsFrameHeader;
+
 pub fn start_client(ip: &str) -> Result<()> {
+    let ws_frame = generate_ws_frame(
+        WsFrameHeader {
+            fin: true,
+            rsv1: false,
+            rsv2: false,
+            rsv3: false,
+            opcode: 0b0001,
+            mask: true,
+            masking_key: [0x13, 0x81, 0xd5, 0x59],
+            payload_len: 5,
+        },
+        b"Lorem",
+    );
+    println!("{ws_frame:02X?}");
+    return Ok(());
+
     println!("Trying to connect to: {ip}...");
     let (mut socket, resp) = tungstenite::connect(ip)?;
 
@@ -21,4 +41,42 @@ pub fn start_client(ip: &str) -> Result<()> {
     socket.close(None)?;
 
     Ok(())
+}
+
+const U16_MAX: usize = u16::MAX as usize;
+fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
+    let mut tmp = Vec::new();
+    let first_byte = (header.fin as u8) << 7
+        | (header.rsv1 as u8) << 6
+        | (header.rsv2 as u8) << 5
+        | (header.rsv3 as u8) << 4
+        | header.opcode & 0x0F;
+    tmp.push(first_byte);
+
+    match header.payload_len {
+        0..=125 => {
+            tmp.push((header.mask as u8) << 7 | header.payload_len as u8);
+        }
+        126..U16_MAX => {
+            tmp.push((header.mask as u8) << 7 | 126);
+            tmp.extend_from_slice(&(header.payload_len as u16).to_be_bytes());
+        }
+        U16_MAX.. => {
+            tmp.push((header.mask as u8) << 7 | 127);
+            tmp.extend_from_slice(&(header.payload_len as u64).to_be_bytes());
+        }
+    }
+
+    if header.mask {
+        tmp.extend_from_slice(&header.masking_key);
+        tmp.extend(
+            data.iter()
+                .enumerate()
+                .map(|(i, &x)| x ^ header.masking_key[i % 4]),
+        );
+    } else {
+        tmp.extend_from_slice(data);
+    }
+
+    tmp
 }

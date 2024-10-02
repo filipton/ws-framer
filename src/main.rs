@@ -3,6 +3,7 @@ use clap::Parser;
 
 mod client;
 mod server;
+mod structs;
 
 #[derive(Parser, Debug)]
 #[command(version)]

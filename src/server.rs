@@ -7,6 +7,8 @@ use std::{
     net::TcpListener,
 };
 
+use crate::structs::WsFrameHeader;
+
 pub fn start_server(ip: &str) -> Result<()> {
     println!(
         "dsa: {:?}",
@@ -95,19 +97,6 @@ fn construct_http_resp(
         .join("\r\n");
 
     format!("HTTP/{http_ver} {status_code} {status_text}\r\n{headers_str}\r\n\r\n")
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct WsFrameHeader {
-    pub fin: bool,
-    pub rsv1: bool,
-    pub rsv2: bool,
-    pub rsv3: bool,
-    pub opcode: u8,
-    pub mask: bool,
-    pub masking_key: [u8; 4],
-    pub payload_len: usize,
 }
 
 fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> Result<(WsFrameHeader, &'a [u8])> {
