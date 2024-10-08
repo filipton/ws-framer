@@ -10,11 +10,6 @@ use std::{
 use crate::structs::WsFrameHeader;
 
 pub fn start_server(ip: &str) -> Result<()> {
-    println!(
-        "dsa: {:?}",
-        parse_sec_websocket_key("dGhlIHNhbXBsZSBub25jZQ==")
-    );
-
     let listener = TcpListener::bind(ip)?;
     println!("Server started on: {ip:?}!");
 
@@ -68,8 +63,13 @@ pub fn start_server(ip: &str) -> Result<()> {
             stream.read_exact(&mut buf[rest.len()..header.payload_len])?;
             parse_payload(&mut buf, &header);
 
-            println!("{} {:02?}", buf.len(), buf);
+            //println!("{} {:02?}", buf.len(), buf);
             println!("{:?}", core::str::from_utf8(&buf));
+
+            let mut echoed_header = header.clone();
+            echoed_header.mask = false;
+            let ws_frame = crate::client::generate_ws_frame(echoed_header, &buf);
+            _ = stream.write_all(&ws_frame);
         }
     }
 

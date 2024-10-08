@@ -83,7 +83,7 @@ pub fn start_client(ip: &str) -> Result<()> {
 }
 
 const U16_MAX: usize = u16::MAX as usize;
-fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
+pub fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
     let mut tmp = Vec::new();
     let first_byte = (header.fin as u8) << 7
         | (header.rsv1 as u8) << 6
@@ -120,17 +120,17 @@ fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
     tmp
 }
 
-fn generate_sec_ws_key() -> String {
+pub fn generate_sec_ws_key() -> String {
     let mut ws_key = [0u8; 16];
     rand::thread_rng().fill(&mut ws_key);
     BASE64_STANDARD.encode(ws_key)
 }
 
-fn generate_masking_key() -> [u8; 4] {
+pub fn generate_masking_key() -> [u8; 4] {
     rand::thread_rng().next_u32().to_be_bytes()
 }
 
-fn generate_http_req(
+pub fn generate_http_req(
     method: &str,
     path: &str,
     http_ver: &str,
