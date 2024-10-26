@@ -7,7 +7,7 @@ use std::{
     net::TcpListener,
 };
 
-use crate::structs::WsFrameHeader;
+use crate::structs::{WsFrameHeader, WsMessage};
 
 pub fn start_server(ip: &str) -> Result<()> {
     let listener = TcpListener::bind(ip)?;
@@ -61,10 +61,9 @@ pub fn start_server(ip: &str) -> Result<()> {
             let mut buf = vec![0; header.payload_len];
             buf[..rest.len()].copy_from_slice(rest);
             stream.read_exact(&mut buf[rest.len()..header.payload_len])?;
-            parse_payload(&mut buf, &header);
 
-            //println!("{} {:02?}", buf.len(), buf);
-            println!("{:?}", core::str::from_utf8(&buf));
+            let ws_frame = WsMessage::from_data(&header, &mut buf);
+            println!("recv_ws_frame: {ws_frame:?}");
 
             let mut echoed_header = header.clone();
             echoed_header.mask = false;
@@ -138,7 +137,7 @@ fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> Result<(WsFrameHeader, &'a [u8])>
     ))
 }
 
-fn parse_payload(payload: &mut [u8], header: &WsFrameHeader) {
+pub fn parse_payload(payload: &mut [u8], header: &WsFrameHeader) {
     if header.mask {
         for (i, x) in payload.iter_mut().enumerate() {
             let key = header.masking_key[i % 4];
