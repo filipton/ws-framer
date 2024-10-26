@@ -1,4 +1,4 @@
-use crate::structs::WsFrameHeader;
+use crate::structs::{WsFrameHeader, WsMessage};
 use anyhow::Result;
 use base64::prelude::*;
 use rand::{Rng, RngCore};
@@ -26,59 +26,10 @@ pub fn start_client(ip: &str) -> Result<()> {
     println!("resp_n: {n}");
     println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
 
-    let ws_frame = generate_ws_frame(
-        WsFrameHeader {
-            fin: true,
-            rsv1: false,
-            rsv2: false,
-            rsv3: false,
-            opcode: 0b0001,
-            mask: true,
-            masking_key: generate_masking_key(),
-            payload_len: 5,
-        },
-        b"Lorem",
-    );
-    client.write_all(&ws_frame)?;
-    println!("{ws_frame:02X?}");
+    client.write_all(&WsMessage::Text("Lorem".to_string()).to_data())?;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let ws_frame = generate_ws_frame(
-        WsFrameHeader {
-            fin: true,
-            rsv1: false,
-            rsv2: false,
-            rsv3: false,
-            opcode: 0b1000,
-            mask: true,
-            masking_key: generate_masking_key(),
-            payload_len: 0,
-        },
-        &[],
-    );
-    client.write_all(&ws_frame)?;
-    println!("{ws_frame:02X?}");
-
-    /*
-    println!("Trying to connect to: {ip}...");
-    let (mut socket, resp) = tungstenite::connect(ip)?;
-
-    println!("Http response: {resp:?}");
-
-    socket.send(tungstenite::Message::Text("Lorem".into()))?;
-    //socket.send(tungstenite::Message::Text("Very long text,dsadsahjdsahjdhsadhsa dsahdasd asd asd sad sadsadasdsad saewq ewqewqeqw ewqeqweqweqweqw cf43 f534 fg543g465g543g grewsgfdsvfdsgvfds wqfwqafweqfewq fewqrweqrweqfewq cewqfdewqfewqfewrq rteqreqwfergerwtgre grewtyrewytreytre gbfdgbfdghfdhgfdsgrfqe wc4wqcewqcewqcwe END".into()))?;
-
-    /*
-    let mut to_send = [0u8; 40960];
-    for i in 0..to_send.len() {
-        to_send[i] = (i % 250) as u8;
-    }
-    socket.send(tungstenite::Message::Binary(to_send.to_vec()))?;
-    */
-
-    std::thread::sleep(std::time::Duration::from_secs(5));
-    socket.close(None)?;
-    */
+    client.write_all(&WsMessage::Close().to_data())?;
     Ok(())
 }
 
