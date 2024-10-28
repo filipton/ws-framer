@@ -77,8 +77,7 @@ const WS_KEY_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 pub fn parse_sec_websocket_key(key: &str) -> String {
     let tmp = format!("{key}{WS_KEY_GUID}");
     let hash = crate::crypto::sha1(tmp.as_bytes());
-    let digest = crate::crypto::hash_to_digest(hash);
-    crate::crypto::Base64Pad::encode(&digest)
+    crate::crypto::Base64Pad::encode(&hash)
 }
 
 fn construct_http_resp(

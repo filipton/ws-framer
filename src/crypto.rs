@@ -33,7 +33,7 @@ fn k(t: u32) -> u32 {
     }
 }
 
-pub fn sha1(input: &[u8]) -> [u32; 5] {
+pub fn sha1(input: &[u8]) -> [u8; 20] {
     let blocks_len = (((input.len() + 8) / 64) + 1) * 64;
     let mut blocks_tmp = vec![0u8; blocks_len];
     blocks_tmp[0..input.len()].copy_from_slice(input);
@@ -80,26 +80,14 @@ pub fn sha1(input: &[u8]) -> [u32; 5] {
         h[4] = h[4].wrapping_add(e);
     }
 
-    [
+    let tmp = [
         h[0].to_be(),
         h[1].to_be(),
         h[2].to_be(),
         h[3].to_be(),
         h[4].to_be(),
-    ]
-}
+    ];
 
-pub fn hash_to_digest(input: [u32; 5]) -> [u8; 20] {
-    let digest = unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u8, 20) };
+    let digest = unsafe { core::slice::from_raw_parts(tmp.as_ptr() as *const u8, 20) };
     digest.try_into().unwrap()
-}
-
-pub fn hash_to_str(input: [u32; 5]) -> String {
-    let digest = unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u8, 20) };
-    let hash_str = digest
-        .iter()
-        .map(|x| format!("{:02x}", x))
-        .collect::<String>();
-
-    hash_str
 }

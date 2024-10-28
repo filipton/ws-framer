@@ -1,4 +1,7 @@
-use crate::{crypto::Base64Pad, structs::{WsFrameHeader, WsMessage}};
+use crate::{
+    crypto::Base64Pad,
+    structs::{WsFrameHeader, WsMessage},
+};
 use anyhow::Result;
 use rand::{Rng, RngCore};
 use std::{
@@ -28,7 +31,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     client.write_all(&WsMessage::Text("Lorem".to_string()).to_data())?;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&WsMessage::Close().to_data())?;
+    client.write_all(&WsMessage::Close(1000, "".to_string()).to_data())?;
     Ok(())
 }
 
