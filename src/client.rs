@@ -74,7 +74,12 @@ pub fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
 pub fn generate_sec_ws_key() -> String {
     let mut ws_key = [0u8; 16];
     rand::thread_rng().fill(&mut ws_key);
-    BASE64_STANDARD.encode(ws_key)
+    let len = base64::encoded_len(16, true).unwrap();
+    println!("gen_len:{len}");
+
+    let mut out = vec![0; len];
+    BASE64_STANDARD.encode_slice(&ws_key, &mut out).unwrap();
+    String::from_utf8_lossy(&out).to_string()
 }
 
 pub fn generate_masking_key() -> [u8; 4] {

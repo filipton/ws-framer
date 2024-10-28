@@ -1,3 +1,11 @@
+use macros::base64_impl;
+
+base64_impl!(
+    Base64Pad,
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    true
+);
+
 macro_rules! left_rotate {
     ($x:expr,$c:expr) => {
         ($x << $c) | ($x >> (32 - $c))
@@ -68,7 +76,13 @@ pub fn sha1(input: &[u8]) -> [u32; 5] {
         h[4] = h[4].wrapping_add(a[4]);
     }
 
-    [h[0].to_be(), h[1].to_be(), h[2].to_be(), h[3].to_be(), h[4].to_be()]
+    [
+        h[0].to_be(),
+        h[1].to_be(),
+        h[2].to_be(),
+        h[3].to_be(),
+        h[4].to_be(),
+    ]
 }
 
 pub fn hash_to_str(input: [u32; 5]) -> String {

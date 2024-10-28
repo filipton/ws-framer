@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.89"
-base64 = "0.22.1"
-clap = { version = "4.5.18", features = ["derive"] }
+anyhow = "1.0.91"
+base64 = { version = "0.22.1", default-features = false }
+clap = { version = "4.5.20", features = ["derive"] }
 httparse = "1.9.5"
 rand = "0.8.5"
-sha1 = "0.10.6"
+sha1 = { version = "0.10.6", default-features = false }
 tungstenite = "0.24.0"
+macros = { path = "./macros" }
