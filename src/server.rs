@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::prelude::*;
-use sha1::{digest::core_api::UpdateCore, Digest, Sha1, Sha1Core};
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -76,12 +74,11 @@ pub fn start_server(ip: &str) -> Result<()> {
 }
 
 const WS_KEY_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-fn parse_sec_websocket_key(key: &str) -> String {
+pub fn parse_sec_websocket_key(key: &str) -> String {
     let tmp = format!("{key}{WS_KEY_GUID}");
-    let mut hasher = Sha1Core::default();
-    "".to_string()
-    //Sha1Core::update_blocks(&mut hasher, tmp.as_bytes().into());
-    //BASE64_STANDARD.encode(hasher.finalize())
+    let hash = crate::crypto::sha1(tmp.as_bytes());
+    let digest = crate::crypto::hash_to_digest(hash);
+    crate::crypto::Base64Pad::encode(&digest)
 }
 
 fn construct_http_resp(

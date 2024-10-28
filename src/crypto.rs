@@ -34,46 +34,50 @@ fn k(t: u32) -> u32 {
 }
 
 pub fn sha1(input: &[u8]) -> [u32; 5] {
-    let blocks_len = ((input.len() / 64) + 1) * 64;
+    let blocks_len = (((input.len() + 8) / 64) + 1) * 64;
     let mut blocks_tmp = vec![0u8; blocks_len];
     blocks_tmp[0..input.len()].copy_from_slice(input);
     blocks_tmp[input.len()] = 0x80;
-    blocks_tmp[blocks_len - 8..blocks_len].copy_from_slice(&(input.len() * 8).to_be_bytes());
+    blocks_tmp[blocks_len - 8..blocks_len]
+        .copy_from_slice(&((input.len() * 8) as u64).to_be_bytes());
     let blocks =
         unsafe { core::slice::from_raw_parts(blocks_tmp.as_ptr() as *const u32, blocks_len / 4) };
 
     let mut w = [0u32; 80];
     let mut h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
-
-    for b in (0..blocks_len / 4).step_by(16) {
+    for chunk in blocks.chunks(16) {
         for t in 0..16 {
-            w[t] = blocks[b + t].to_be();
+            w[t] = u32::from_be(chunk[t]);
         }
 
         for t in 16..80 {
             w[t] = left_rotate!(w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16], 1);
         }
 
-        let mut a = h.clone();
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        let mut e = h[4];
         for t in 0..80usize {
-            let tmp = (left_rotate!(a[0], 5) as u32)
-                .wrapping_add(f(t as u32, a[1], a[2], a[3]))
-                .wrapping_add(a[4])
+            let temp = (left_rotate!(a, 5) as u32)
+                .wrapping_add(f(t as u32, b, c, d))
+                .wrapping_add(e)
                 .wrapping_add(w[t])
                 .wrapping_add(k(t as u32));
 
-            a[4] = a[3];
-            a[3] = a[2];
-            a[2] = left_rotate!(a[1], 30);
-            a[1] = a[0];
-            a[0] = tmp;
+            e = d;
+            d = c;
+            c = left_rotate!(b, 30);
+            b = a;
+            a = temp;
         }
 
-        h[0] = h[0].wrapping_add(a[0]);
-        h[1] = h[1].wrapping_add(a[1]);
-        h[2] = h[2].wrapping_add(a[2]);
-        h[3] = h[3].wrapping_add(a[3]);
-        h[4] = h[4].wrapping_add(a[4]);
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e);
     }
 
     [
@@ -83,6 +87,11 @@ pub fn sha1(input: &[u8]) -> [u32; 5] {
         h[3].to_be(),
         h[4].to_be(),
     ]
+}
+
+pub fn hash_to_digest(input: [u32; 5]) -> [u8; 20] {
+    let digest = unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u8, 20) };
+    digest.try_into().unwrap()
 }
 
 pub fn hash_to_str(input: [u32; 5]) -> String {

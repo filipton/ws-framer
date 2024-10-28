@@ -23,14 +23,6 @@ enum Mode {
 }
 
 fn main() -> Result<()> {
-    let mut str = String::new();
-    str.push_str(&"=".repeat(10));
-
-    let hash = crate::crypto::sha1(&[0x64, 0x73, 0x61]);
-    let str = crate::crypto::hash_to_str(hash);
-    println!("{:?}", str);
-    return Ok(());
-
     let args = Args::parse();
     println!("{args:?}");
 
