@@ -75,7 +75,7 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
 
     let pad_token = match pad {
         true => quote! {
-            output_str.push_str(&"=".repeat(pad_len));
+            output[out_ptr..].fill(b'=');
         },
         false => quote! {},
     };
@@ -86,6 +86,15 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
         },
         false => quote! {
             n / 3 * 4 + (n % 3 * 4 + 2) / 3
+        },
+    };
+
+    let decode_len_tokens = match pad {
+        true => quote! {
+            (n / 4) * 3
+        },
+        false => quote! {
+            (n * 3) / 4
         },
     };
 
@@ -103,23 +112,34 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
 
 
             pub fn encode(input: &[u8]) -> String {
-                let mut output_str = String::new();
+                let mut output = vec![0; Self::encode_len(input.len())];
+                Self::encode_slice(input, &mut output);
+
+                String::from_utf8(output).expect("Base64 utf8 error")
+            }
+
+            pub fn encode_slice(input: &[u8], output: &mut [u8]) {
+                if Self::encode_len(input.len()) > output.len() {
+                    panic!("Output buffer too small!!! TODO: Make this as result, not as a panic LMAO");
+                }
 
                 // stack
                 let mut bit_size = 0 as usize;
                 let mut bit_stack = 0 as u64;
 
+                let mut out_ptr = 0;
                 for byte in input {
                     bit_stack <<= 8;
                     bit_stack |= *byte as u64;
                     bit_size += 8;
 
                     if bit_size == 24 {
-                        output_str.push(Self::ENCODE_MAP[((bit_stack & 0b111111000000000000000000) >> 18) as usize]);
-                        output_str.push(Self::ENCODE_MAP[((bit_stack & 0b111111000000000000) >> 12) as usize]);
-                        output_str.push(Self::ENCODE_MAP[((bit_stack & 0b111111000000) >> 6) as usize]);
-                        output_str.push(Self::ENCODE_MAP[(bit_stack & 0b111111) as usize]);
+                        output[out_ptr + 0] = Self::ENCODE_MAP[((bit_stack & 0b111111000000000000000000) >> 18) as usize] as u8;
+                        output[out_ptr + 1] = Self::ENCODE_MAP[((bit_stack & 0b111111000000000000) >> 12) as usize] as u8;
+                        output[out_ptr + 2] = Self::ENCODE_MAP[((bit_stack & 0b111111000000) >> 6) as usize] as u8;
+                        output[out_ptr + 3] = Self::ENCODE_MAP[(bit_stack & 0b111111) as usize] as u8;
 
+                        out_ptr += 4;
                         bit_size = 0;
                     }
                 }
@@ -132,25 +152,31 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
                 let mut pad_len = 4;
                 while bit_size > 0 {
                     let shift = bit_size - 6;
-                    output_str.push(Self::ENCODE_MAP[((bit_stack & (0b111111 << shift)) >> shift) as usize]);
+                    output[out_ptr] = Self::ENCODE_MAP[((bit_stack & (0b111111 << shift)) >> shift) as usize] as u8;
                     bit_size -= 6;
                     pad_len -= 1;
+                    out_ptr += 1;
                 }
 
                 #pad_token
-
-                output_str
             }
 
             pub fn decode(input: &str) -> Vec<u8> {
-                let mut output = Vec::new();
+                let mut output = vec![0; Self::decode_len(input.len())];
+                let n = Self::decode_slice(input.as_bytes(), &mut output);
+
+                output[..n].to_vec()
+            }
+
+            pub fn decode_slice(input: &[u8], output: &mut [u8]) -> usize {
+                let mut out_ptr = 0;
 
                 // stack
                 let mut bit_stack = 0 as u64;
                 let mut bit_size = 0usize;
 
-                for c in input.chars() {
-                    if c == '=' {
+                for &c in input {
+                    if c == b'=' {
                         break;
                     }
 
@@ -168,15 +194,20 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
                         let byte = ((bit_stack & (0b11111111 << shift)) >> shift) as u8;
                         bit_size -= 8;
 
-                        output.push(byte);
+                        output[out_ptr] = byte;
+                        out_ptr += 1;
                     }
                 }
 
-                output
+                out_ptr
             }
 
             pub fn encode_len(n: usize) -> usize {
                 #encode_len_tokens
+            }
+
+            pub fn decode_len(n: usize) -> usize {
+                #decode_len_tokens
             }
         }
     }
