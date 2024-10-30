@@ -34,7 +34,7 @@ impl WsMessage {
         }
     }
 
-    pub fn to_data(self, mask: bool) -> Vec<u8> {
+    pub fn to_data(self, mask: bool, gen_mask: Option<&mut impl FnMut() -> u32>) -> Vec<u8> {
         let opcode = self.opcode();
         let ws_data = match self {
             WsMessage::Text(str) => str.as_bytes().to_vec(),
@@ -51,7 +51,7 @@ impl WsMessage {
         };
 
         let masking_key = match mask {
-            true => crate::client::generate_masking_key(),
+            true => gen_mask.expect("If mask is true, spocify gen_mask func")().to_le_bytes(),
             false => [0; 4],
         };
 
@@ -84,16 +84,5 @@ impl WsMessage {
             ),
             _ => Self::Unknown,
         }
-    }
-}
-
-pub trait RandomProvider {
-    fn fill_buffer(&self, buff: &mut [u8]);
-}
-
-pub struct StdProvider;
-impl RandomProvider for StdProvider {
-    fn fill_buffer(&self, buff: &mut [u8]) {
-        rand::Rng::fill(&mut rand::thread_rng(), buff);
     }
 }

@@ -1,77 +1,4 @@
-use anyhow::Result;
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::TcpListener,
-};
-
-use crate::structs::{WsFrameHeader, WsMessage};
-
-pub fn start_server(ip: &str) -> Result<()> {
-    let listener = TcpListener::bind(ip)?;
-    println!("Server started on: {ip:?}!");
-
-    while let Ok((mut stream, addr)) = listener.accept() {
-        println!("Client connected: {addr}");
-
-        let mut buf = [0; 4096];
-        let n = stream.read(&mut buf)?;
-
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut req = httparse::Request::new(&mut headers);
-        let res = req.parse(&buf[..n])?;
-
-        if res.is_partial() {
-            println!("[ERROR] HTTP request not complete (partial)");
-            continue;
-        }
-
-        let sec_ws_key = core::str::from_utf8(
-            req.headers
-                .iter()
-                .find(|x| x.name == "Sec-WebSocket-Key")
-                .unwrap()
-                .value,
-        )?;
-        println!("sec_ws_key: {sec_ws_key}");
-
-        let mut headers = HashMap::new();
-        headers.insert("Upgrade".to_string(), "websocket".to_string());
-        headers.insert("Connection".to_string(), "Upgrade".to_string());
-        headers.insert(
-            "Sec-WebSocket-Accept".to_string(),
-            parse_sec_websocket_key(sec_ws_key),
-        );
-        let resp = construct_http_resp("1.1", 101, "Switching Protocols", headers);
-        println!("resp: {resp:?}");
-        stream.write_all(resp.as_bytes())?;
-
-        let mut header_buf = [0; 14];
-        loop {
-            let read_n = stream.read(&mut header_buf)?;
-            println!("read_header_n: {read_n}");
-            if read_n == 0 {
-                break;
-            }
-
-            let (header, rest) = parse_ws_frame_header(&header_buf[..read_n])?;
-            println!("header: {header:?}, rest: {rest:?}");
-            let mut buf = vec![0; header.payload_len];
-            buf[..rest.len()].copy_from_slice(rest);
-            stream.read_exact(&mut buf[rest.len()..header.payload_len])?;
-
-            let ws_frame = WsMessage::from_data(&header, &mut buf);
-            println!("recv_ws_frame: {ws_frame:?}");
-
-            let mut echoed_header = header.clone();
-            echoed_header.mask = false;
-            let ws_frame = crate::client::generate_ws_frame(echoed_header, &buf);
-            _ = stream.write_all(&ws_frame);
-        }
-    }
-
-    Ok(())
-}
+use crate::structs::WsFrameHeader;
 
 const WS_KEY_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 pub fn parse_sec_websocket_key(key: &str) -> String {
@@ -80,11 +7,11 @@ pub fn parse_sec_websocket_key(key: &str) -> String {
     crate::crypto::Base64Pad::encode(&hash)
 }
 
-fn construct_http_resp(
+pub fn construct_http_resp(
     http_ver: &str,
     status_code: u16,
     status_text: &str,
-    headers: HashMap<String, String>,
+    headers: std::collections::HashMap<String, String>,
 ) -> String {
     let headers_str = headers
         .iter()
@@ -95,7 +22,7 @@ fn construct_http_resp(
     format!("HTTP/{http_ver} {status_code} {status_text}\r\n{headers_str}\r\n\r\n")
 }
 
-fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> Result<(WsFrameHeader, &'a [u8])> {
+pub fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> (WsFrameHeader, &'a [u8]) {
     let fin = (buf[0] & 0b10000000) >> 7;
     let rsv1 = (buf[0] & 0b01000000) >> 6;
     let rsv2 = (buf[0] & 0b00100000) >> 5;
@@ -119,7 +46,7 @@ fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> Result<(WsFrameHeader, &'a [u8])>
         offset += 4;
     }
 
-    Ok((
+    (
         WsFrameHeader {
             fin: fin == 1,
             rsv1: rsv1 == 1,
@@ -131,7 +58,7 @@ fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> Result<(WsFrameHeader, &'a [u8])>
             payload_len,
         },
         &buf[offset..],
-    ))
+    )
 }
 
 pub fn parse_payload(payload: &mut [u8], header: &WsFrameHeader) {

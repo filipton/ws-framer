@@ -1,41 +1,10 @@
-use crate::{
-    crypto::Base64Pad,
-    structs::{WsFrameHeader, WsMessage},
-};
-use anyhow::Result;
-use rand::{Rng, RngCore};
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::TcpStream,
-    u16,
-};
-
-pub fn start_client(ip: &str) -> Result<()> {
-    let bytes = generate_start_packet(ip, "/", None, &mut |buff: &mut [u8]| {
-        rand::thread_rng().fill_bytes(buff);
-    });
-
-    let mut client = TcpStream::connect(ip)?;
-    client.write_all(&bytes)?;
-
-    let mut buf = [0; 1024];
-    let n = client.read(&mut buf)?;
-    println!("resp_n: {n}");
-    println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
-
-    client.write_all(&WsMessage::Text("Lorem".to_string()).to_data(true))?;
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&WsMessage::Close(1000, "".to_string()).to_data(true))?;
-    Ok(())
-}
+use crate::{crypto::Base64Pad, structs::WsFrameHeader};
 
 const WS_KEY_B64_LEN: usize = Base64Pad::encode_len(16);
 pub fn generate_start_packet(
     host: &str,
     path: &str,
-    additional_headers: Option<HashMap<&str, &str>>,
+    additional_headers: Option<std::collections::HashMap<&str, &str>>,
     gen: &mut impl FnMut(&mut [u8]),
 ) -> Vec<u8> {
     let mut ws_key = [0u8; 16];
@@ -103,8 +72,4 @@ pub fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
     }
 
     tmp
-}
-
-pub fn generate_masking_key() -> [u8; 4] {
-    rand::thread_rng().next_u32().to_be_bytes()
 }
