@@ -202,11 +202,11 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
                 out_ptr
             }
 
-            pub fn encode_len(n: usize) -> usize {
+            pub const fn encode_len(n: usize) -> usize {
                 #encode_len_tokens
             }
 
-            pub fn decode_len(n: usize) -> usize {
+            pub const fn decode_len(n: usize) -> usize {
                 #decode_len_tokens
             }
         }

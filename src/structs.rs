@@ -34,7 +34,7 @@ impl WsMessage {
         }
     }
 
-    pub fn to_data(self) -> Vec<u8> {
+    pub fn to_data(self, mask: bool) -> Vec<u8> {
         let opcode = self.opcode();
         let ws_data = match self {
             WsMessage::Text(str) => str.as_bytes().to_vec(),
@@ -50,14 +50,19 @@ impl WsMessage {
             WsMessage::Unknown => vec![],
         };
 
+        let masking_key = match mask {
+            true => crate::client::generate_masking_key(),
+            false => [0; 4],
+        };
+
         let frame_header = WsFrameHeader {
             fin: true,
             rsv1: false,
             rsv2: false,
             rsv3: false,
             opcode,
-            mask: true,
-            masking_key: crate::client::generate_masking_key(),
+            mask,
+            masking_key,
             payload_len: ws_data.len(),
         };
 
@@ -79,5 +84,16 @@ impl WsMessage {
             ),
             _ => Self::Unknown,
         }
+    }
+}
+
+pub trait RandomProvider {
+    fn fill_buffer(&self, buff: &mut [u8]);
+}
+
+pub struct StdProvider;
+impl RandomProvider for StdProvider {
+    fn fill_buffer(&self, buff: &mut [u8]) {
+        rand::Rng::fill(&mut rand::thread_rng(), buff);
     }
 }

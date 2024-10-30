@@ -8,5 +8,4 @@ anyhow = "1.0.91"
 clap = { version = "4.5.20", features = ["derive"] }
 httparse = "1.9.5"
 rand = "0.8.5"
-tungstenite = "0.24.0"
 macros = { path = "./macros" }
