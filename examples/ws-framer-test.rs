@@ -114,11 +114,11 @@ pub fn start_client(ip: &str) -> Result<()> {
         rand::thread_rng().fill_bytes(buff);
     };
 
-    let mut framer = WsFramer::new(true, &mut buf, &mut rng_gen);
+    let mut framer = WsFramer::new(true, &mut rng_gen);
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(framer.gen_connect_packet(ip, "/", None))?;
-    client.write_all(framer.gen_connect_packet(ip, "/", None))?;
+    client.write_all(framer.gen_connect_packet(&mut buf, ip, "/", None))?;
+    client.write_all(framer.gen_connect_packet(&mut buf, ip, "/", None))?;
 
     let mut buf = [0; 1024];
     let n = client.read(&mut buf)?;
