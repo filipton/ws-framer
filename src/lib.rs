@@ -50,7 +50,8 @@ pub struct WsFramer<'a, RG: RngProvider> {
     mask: bool,
 
     current_header: Option<WsFrameHeader>,
-    current_offset: usize,
+    read_offset: usize,
+    write_offset: usize,
     packet_size: usize,
 
     rng_provider: core::marker::PhantomData<RG>,
@@ -63,7 +64,8 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
             mask,
 
             current_header: None,
-            current_offset: 0,
+            read_offset: 0,
+            write_offset: 0,
             packet_size: 0,
 
             rng_provider: PhantomData,
@@ -277,12 +279,25 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
         self.frame(WsFrame::Pong(data))
     }
 
-    pub fn parse_data<'b>(&'b mut self, data: &[u8]) -> Option<WsFrame<'b>> {
-        self.buf[self.current_offset..self.current_offset + data.len()].copy_from_slice(data);
-        self.current_offset += data.len();
+    pub fn process_data<'b>(&'b mut self, n: usize) -> Option<WsFrame<'b>> {
+        self.write_offset += n;
+        if self.read_offset > 0 {
+            self.write_offset -= self.packet_size;
+
+            unsafe {
+                core::ptr::copy(
+                    self.buf.as_ptr().offset(self.read_offset as isize),
+                    self.buf.as_mut_ptr(),
+                    self.write_offset,
+                );
+            }
+
+            self.read_offset = 0;
+            self.packet_size = 0;
+        }
 
         if self.current_header.is_none() {
-            let tmp_buf = self.buf[0..self.current_offset].as_mut();
+            let tmp_buf = self.buf[0..self.write_offset].as_mut();
             let fin = (tmp_buf.get(0)? & 0b10000000) >> 7;
             let rsv1 = (tmp_buf.get(0)? & 0b01000000) >> 6;
             let rsv2 = (tmp_buf.get(0)? & 0b00100000) >> 5;
@@ -321,10 +336,9 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
             self.packet_size = offset + payload_len;
         }
 
-        if self.current_offset >= self.packet_size && self.current_header.is_some() {
-            self.current_offset = 0;
-            self.packet_size = 0;
+        if self.write_offset >= self.packet_size && self.current_header.is_some() {
             let header = self.current_header.take().unwrap();
+            self.read_offset = header.offset + header.payload_len;
 
             return Some(WsFrame::from_data(
                 &header,
@@ -333,6 +347,10 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
         }
 
         None
+    }
+
+    pub fn mut_buf<'b>(&'b mut self) -> &'b mut [u8] {
+        self.buf[self.write_offset..].as_mut()
     }
 }
 
