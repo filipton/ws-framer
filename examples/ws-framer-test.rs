@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -96,8 +97,11 @@ pub fn start_server(ip: &str) -> Result<()> {
 
             let mut echoed_header = header.clone();
             echoed_header.mask = false;
-            let ws_frame = ws_framer::client::generate_ws_frame(echoed_header, &buf);
-            _ = stream.write_all(&ws_frame);
+
+            let mut out_buf = vec![0; header.payload_len + 14 - rest.len()];
+            let ws_frame_n =
+                ws_framer::client::generate_ws_frame(echoed_header, &buf, &mut out_buf);
+            _ = stream.write_all(&out_buf[..ws_frame_n]);
         }
     }
 
@@ -105,28 +109,33 @@ pub fn start_server(ip: &str) -> Result<()> {
 }
 
 pub fn start_client(ip: &str) -> Result<()> {
-    let bytes =
-        ws_framer::client::generate_start_packet(ip, "/", None, &mut |buff: &mut [u8]| {
+    let mut buf = vec![0; 10240];
+    let n = ws_framer::client::generate_start_packet(
+        ip,
+        "/",
+        None,
+        &mut |buff: &mut [u8]| {
             rand::thread_rng().fill_bytes(buff);
-        });
+        },
+        &mut buf,
+    );
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(&bytes)?;
+    client.write_all(&buf[..n])?;
 
     let mut buf = [0; 1024];
     let n = client.read(&mut buf)?;
     println!("resp_n: {n}");
     println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
 
-    client.write_all(
-        &WsMessage::Text("Lorem".to_string())
-            .to_data(true, Some(&mut || rand::thread_rng().next_u32())),
-    )?;
+    let frame = WsMessage::Text("Lorem".to_string())
+        .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
+    client.write_all(&frame.0[..frame.1])?;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(
-        &WsMessage::Close(1000, "".to_string())
-            .to_data(true, Some(&mut || rand::thread_rng().next_u32())),
-    )?;
+    let frame = &WsMessage::Close(1000, "".to_string())
+        .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
+    client.write_all(&frame.0[..frame.1])?;
+
     Ok(())
 }

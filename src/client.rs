@@ -1,75 +1,122 @@
 use crate::{crypto::Base64Pad, structs::WsFrameHeader};
+use httparse::Header;
+
+const WS_DEFAULT_HEADERS: [Header; 3] = [
+    Header {
+        name: "Connection",
+        value: b"Upgrade",
+    },
+    Header {
+        name: "Upgrade",
+        value: b"websocket",
+    },
+    Header {
+        name: "Sec-WebSocket-Version",
+        value: b"13",
+    },
+];
 
 const WS_KEY_B64_LEN: usize = Base64Pad::encode_len(16);
 pub fn generate_start_packet(
     host: &str,
     path: &str,
-    additional_headers: Option<std::collections::HashMap<&str, &str>>,
+    additional_headers: Option<&[Header]>,
     gen: &mut impl FnMut(&mut [u8]),
-) -> Vec<u8> {
+    buf: &mut [u8],
+) -> usize {
     let mut ws_key = [0u8; 16];
     gen(&mut ws_key);
+    let mut ws_key_b64 = [0u8; WS_KEY_B64_LEN];
+    Base64Pad::encode_slice(&ws_key, &mut ws_key_b64);
 
-    let mut tmp = Vec::new();
-    tmp.extend_from_slice(b"GET ");
-    tmp.extend_from_slice(path.as_bytes());
-    tmp.extend_from_slice(b" HTTP/1.1\r\n");
-    tmp.extend_from_slice(b"Host: ");
-    tmp.extend_from_slice(host.as_bytes());
-    tmp.extend_from_slice(b"\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ");
+    buf[0..4].copy_from_slice(b"GET ");
 
-    let tmp_len = tmp.len();
-    tmp.resize(tmp_len + WS_KEY_B64_LEN, 0);
-    Base64Pad::encode_slice(&ws_key, &mut tmp[tmp_len..]);
-    tmp.extend_from_slice(b"\r\n");
+    let mut offset = 4 + path.as_bytes().len();
+    buf[4..offset].copy_from_slice(path.as_bytes());
+    buf[offset..offset + 11].copy_from_slice(b" HTTP/1.1\r\n");
+    offset += 11;
 
-    if let Some(headers) = additional_headers {
-        for (k, v) in headers {
-            tmp.extend_from_slice(k.as_bytes());
-            tmp.extend_from_slice(b": ");
-            tmp.extend_from_slice(v.as_bytes());
-            tmp.extend_from_slice(b"\r\n");
+    let headers = [
+        Header {
+            name: "Host",
+            value: host.as_bytes(),
+        },
+        Header {
+            name: "Sec-WebSocket-Key",
+            value: &ws_key_b64,
+        },
+    ];
+
+    let headers: &[Header] = match additional_headers {
+        Some(additional_headers) => {
+            &[&WS_DEFAULT_HEADERS[..], &headers, additional_headers].concat()
         }
-    }
-    tmp.extend_from_slice(b"\r\n");
+        None => &[&WS_DEFAULT_HEADERS[..], &headers].concat(),
+    };
 
-    tmp
+    for header in headers {
+        buf[offset..offset + header.name.len()].copy_from_slice(header.name.as_bytes());
+        offset += header.name.len();
+
+        buf[offset..offset + 2].copy_from_slice(b": ");
+        offset += 2;
+
+        buf[offset..offset + header.value.len()].copy_from_slice(header.value);
+        offset += header.value.len();
+
+        buf[offset..offset + 2].copy_from_slice(b"\r\n");
+        offset += 2;
+    }
+
+    buf[offset..offset + 2].copy_from_slice(b"\r\n");
+    offset + 2
 }
 
 const U16_MAX: usize = u16::MAX as usize;
-pub fn generate_ws_frame(header: WsFrameHeader, data: &[u8]) -> Vec<u8> {
-    let mut tmp = Vec::new();
+pub fn generate_ws_frame(header: WsFrameHeader, data: &[u8], buf: &mut [u8]) -> usize {
     let first_byte = (header.fin as u8) << 7
         | (header.rsv1 as u8) << 6
         | (header.rsv2 as u8) << 5
         | (header.rsv3 as u8) << 4
         | header.opcode & 0x0F;
-    tmp.push(first_byte);
+    buf[0] = first_byte;
 
+    let mut offset = 1;
     match header.payload_len {
         0..=125 => {
-            tmp.push((header.mask as u8) << 7 | header.payload_len as u8);
+            buf[offset] = (header.mask as u8) << 7 | header.payload_len as u8;
+            offset += 1;
         }
         126..U16_MAX => {
-            tmp.push((header.mask as u8) << 7 | 126);
-            tmp.extend_from_slice(&(header.payload_len as u16).to_be_bytes());
+            buf[offset] = (header.mask as u8) << 7 | 126;
+            buf[offset + 1..offset + 1 + 2]
+                .copy_from_slice(&(header.payload_len as u16).to_be_bytes());
+            offset += 3;
         }
         U16_MAX.. => {
-            tmp.push((header.mask as u8) << 7 | 127);
-            tmp.extend_from_slice(&(header.payload_len as u64).to_be_bytes());
+            buf[offset] = (header.mask as u8) << 7 | 127;
+            buf[offset + 1..offset + 1 + 8]
+                .copy_from_slice(&(header.payload_len as u64).to_be_bytes());
+            offset += 9;
         }
     }
 
     if header.mask {
-        tmp.extend_from_slice(&header.masking_key);
-        tmp.extend(
-            data.iter()
-                .enumerate()
-                .map(|(i, &x)| x ^ header.masking_key[i % 4]),
-        );
+        buf[offset..offset + 4].copy_from_slice(&header.masking_key);
+        offset += 4;
+
+        for d in data
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| x ^ header.masking_key[i % 4])
+        {
+            buf[offset] = d;
+            offset += 1;
+        }
     } else {
-        tmp.extend_from_slice(data);
+        buf[offset..offset + data.len()].copy_from_slice(data);
+        offset += data.len();
     }
 
-    tmp
+    offset
 }

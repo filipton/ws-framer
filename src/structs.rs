@@ -34,7 +34,11 @@ impl WsMessage {
         }
     }
 
-    pub fn to_data(self, mask: bool, gen_mask: Option<&mut impl FnMut() -> u32>) -> Vec<u8> {
+    pub fn to_data(
+        self,
+        mask: bool,
+        gen_mask: Option<&mut impl FnMut() -> u32>,
+    ) -> (Vec<u8>, usize) {
         let opcode = self.opcode();
         let ws_data = match self {
             WsMessage::Text(str) => str.as_bytes().to_vec(),
@@ -66,7 +70,9 @@ impl WsMessage {
             payload_len: ws_data.len(),
         };
 
-        crate::client::generate_ws_frame(frame_header, &ws_data)
+        let mut tmp = vec![0; ws_data.len() + 20];
+        let n = crate::client::generate_ws_frame(frame_header, &ws_data, &mut tmp);
+        (tmp, n)
     }
 
     /// Parse ws frame
