@@ -10,6 +10,7 @@ name = "ws-framer-test"
 
 [dependencies]
 httparse = "1.9.5"
+itoa = "1.0.11"
 macros = { path = "./macros" }
 
 [dev-dependencies]
