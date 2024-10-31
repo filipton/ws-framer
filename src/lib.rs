@@ -188,13 +188,21 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
             RG::random_buf(&mut masking_key);
         }
 
-        let payload = frame.payload();
+        let payload = match frame {
+            WsFrame::Text(data) => data.as_bytes(),
+            WsFrame::Binary(data) => data,
+            WsFrame::Close(code, reason) => &[&code.to_be_bytes(), reason.as_bytes()].concat(),
+            WsFrame::Ping(data) => data,
+            WsFrame::Pong(data) => data,
+            WsFrame::Unknown => todo!(),
+        };
+
         let header = WsFrameHeader {
             fin: true,
             rsv1: false,
             rsv2: false,
             rsv3: false,
-            opcode: 1,
+            opcode: frame.opcode(),
             mask: self.mask,
             masking_key,
             payload_len: payload.len(),
@@ -211,8 +219,8 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
         self.frame(WsFrame::Binary(data))
     }
 
-    pub fn close<'b>(&'b mut self, data: &[u8]) -> &'b [u8] {
-        self.frame(WsFrame::Close(data))
+    pub fn close<'b>(&'b mut self, code: u16, reason: &str) -> &'b [u8] {
+        self.frame(WsFrame::Close(code, reason))
     }
 
     pub fn ping<'b>(&'b mut self, data: &[u8]) -> &'b [u8] {
@@ -229,7 +237,7 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
 pub enum WsFrame<'a> {
     Text(&'a str),
     Binary(&'a [u8]),
-    Close(&'a [u8]),
+    Close(u16, &'a str),
     Ping(&'a [u8]),
     Pong(&'a [u8]),
     Unknown,
@@ -240,21 +248,10 @@ impl WsFrame<'_> {
         match self {
             WsFrame::Text(_) => 1,
             WsFrame::Binary(_) => 2,
-            WsFrame::Close(_) => 8,
+            WsFrame::Close(..) => 8,
             WsFrame::Ping(_) => 9,
             WsFrame::Pong(_) => 10,
             WsFrame::Unknown => 0,
-        }
-    }
-
-    pub fn payload(&self) -> &[u8] {
-        match self {
-            WsFrame::Text(data) => data.as_bytes(),
-            WsFrame::Binary(data) => data,
-            WsFrame::Close(data) => data,
-            WsFrame::Ping(data) => data,
-            WsFrame::Pong(data) => data,
-            WsFrame::Unknown => todo!(),
         }
     }
 }

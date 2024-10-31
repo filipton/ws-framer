@@ -129,9 +129,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     */
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let frame = &WsMessage::Close(1000, "".to_string())
-        .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
-    client.write_all(&frame.0[..frame.1])?;
+    client.write_all(&framer.close(1000, ""))?;
 
     Ok(())
 }
