@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::Result;
 use clap::Parser;
+use httparse::Header;
 use rand::RngCore;
 use ws_framer::{structs::WsMessage, RngProvider, WsFramer};
 
@@ -45,6 +46,9 @@ pub fn start_server(ip: &str) -> Result<()> {
     while let Ok((mut stream, addr)) = listener.accept() {
         println!("Client connected: {addr}");
 
+        let mut buf = vec![0; 10240];
+        let mut framer = WsFramer::<StdRandom>::new(false, &mut buf);
+
         let mut buf = [0; 4096];
         let n = stream.read(&mut buf)?;
 
@@ -66,26 +70,33 @@ pub fn start_server(ip: &str) -> Result<()> {
         )?;
         println!("sec_ws_key: {sec_ws_key}");
 
-        let mut headers = HashMap::new();
-        headers.insert("Upgrade".to_string(), "websocket".to_string());
-        headers.insert("Connection".to_string(), "Upgrade".to_string());
-        headers.insert(
-            "Sec-WebSocket-Accept".to_string(),
-            ws_framer::server::parse_sec_websocket_key(sec_ws_key),
-        );
-        let resp =
-            ws_framer::server::construct_http_resp("1.1", 101, "Switching Protocols", headers);
-        println!("resp: {resp:?}");
-        stream.write_all(resp.as_bytes())?;
+        let headers = [
+            Header {
+                name: "Upgrade",
+                value: b"websocket",
+            },
+            Header {
+                name: "Connection",
+                value: b"upgrade",
+            },
+            Header {
+                name: "Sec-WebSocket-Accept",
+                value: &ws_framer::process_sec_websocket_key(sec_ws_key),
+            },
+        ];
 
-        let mut header_buf = [0; 14];
+        stream.write_all(framer.construct_http_resp(101, "Switching Protocols", &headers))?;
+
         loop {
-            let read_n = stream.read(&mut header_buf)?;
-            println!("read_header_n: {read_n}");
+            let read_n = stream.read(&mut buf)?;
             if read_n == 0 {
                 break;
             }
 
+            let res = framer.parse_data(&buf[..read_n]);
+            println!("{res:?}");
+
+            /*
             let (header, rest) = ws_framer::server::parse_ws_frame_header(&header_buf[..read_n]);
             println!("header: {header:?}, rest: {rest:?}");
             let mut buf = vec![0; header.payload_len];
@@ -99,9 +110,12 @@ pub fn start_server(ip: &str) -> Result<()> {
             echoed_header.mask = false;
 
             let mut out_buf = vec![0; header.payload_len + 14 - rest.len()];
+            /*
             let ws_frame_n =
                 ws_framer::client::generate_ws_frame(echoed_header, &buf, &mut out_buf);
             _ = stream.write_all(&out_buf[..ws_frame_n]);
+            */
+            */
         }
     }
 
@@ -110,7 +124,6 @@ pub fn start_server(ip: &str) -> Result<()> {
 
 pub fn start_client(ip: &str) -> Result<()> {
     let mut buf = vec![0; 10240];
-
     let mut framer = WsFramer::<StdRandom>::new(true, &mut buf);
 
     let mut client = TcpStream::connect(ip)?;
@@ -121,7 +134,9 @@ pub fn start_client(ip: &str) -> Result<()> {
     println!("resp_n: {n}");
     println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
 
-    client.write_all(&framer.text("Lorem"))?;
+    let frame = framer.text("Lorem");
+    println!("{:?}", frame);
+    client.write_all(&frame)?;
     /*
     let frame = WsMessage::Text("Lorem".to_string())
         .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
@@ -129,7 +144,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     */
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&framer.close(1000, ""))?;
+    client.write_all(&framer.close(1000, "Test close msg"))?;
 
     Ok(())
 }

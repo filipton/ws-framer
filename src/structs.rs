@@ -1,22 +1,11 @@
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct WsFrameHeader {
-    pub fin: bool,
-    pub rsv1: bool,
-    pub rsv2: bool,
-    pub rsv3: bool,
-    pub opcode: u8,
-    pub mask: bool,
-    pub masking_key: [u8; 4],
-    pub payload_len: usize,
-}
+use crate::WsFrameHeader;
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum WsMessage {
     Text(String),
     Binary(Vec<u8>),
-    Close(u16, String), // TODO: reason i guess
+    Close(u16, String),
     Ping(Vec<u8>),
     Pong(Vec<u8>),
     Unknown,
@@ -32,47 +21,6 @@ impl WsMessage {
             WsMessage::Pong(_) => 10,
             WsMessage::Unknown => 0,
         }
-    }
-
-    pub fn to_data(
-        self,
-        mask: bool,
-        gen_mask: Option<&mut impl FnMut() -> u32>,
-    ) -> (Vec<u8>, usize) {
-        let opcode = self.opcode();
-        let ws_data = match self {
-            WsMessage::Text(str) => str.as_bytes().to_vec(),
-            WsMessage::Binary(vec) => vec,
-            WsMessage::Close(code, reason) => {
-                let mut tmp = Vec::new();
-                tmp.extend_from_slice(&code.to_be_bytes());
-                tmp.extend_from_slice(reason.as_bytes());
-                tmp
-            }
-            WsMessage::Ping(vec) => vec,
-            WsMessage::Pong(vec) => vec,
-            WsMessage::Unknown => vec![],
-        };
-
-        let masking_key = match mask {
-            true => gen_mask.expect("If mask is true, spocify gen_mask func")().to_le_bytes(),
-            false => [0; 4],
-        };
-
-        let frame_header = WsFrameHeader {
-            fin: true,
-            rsv1: false,
-            rsv2: false,
-            rsv3: false,
-            opcode,
-            mask,
-            masking_key,
-            payload_len: ws_data.len(),
-        };
-
-        let mut tmp = vec![0; ws_data.len() + 20];
-        let n = crate::client::generate_ws_frame(frame_header, &ws_data, &mut tmp);
-        (tmp, n)
     }
 
     /// Parse ws frame

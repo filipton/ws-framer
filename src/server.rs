@@ -1,26 +1,4 @@
-use crate::structs::WsFrameHeader;
-
-const WS_KEY_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-pub fn parse_sec_websocket_key(key: &str) -> String {
-    let tmp = format!("{key}{WS_KEY_GUID}");
-    let hash = crate::crypto::sha1(tmp.as_bytes());
-    crate::crypto::Base64Pad::encode(&hash)
-}
-
-pub fn construct_http_resp(
-    http_ver: &str,
-    status_code: u16,
-    status_text: &str,
-    headers: std::collections::HashMap<String, String>,
-) -> String {
-    let headers_str = headers
-        .iter()
-        .map(|(k, v)| format!("{k}: {v}"))
-        .collect::<Vec<_>>()
-        .join("\r\n");
-
-    format!("HTTP/{http_ver} {status_code} {status_text}\r\n{headers_str}\r\n\r\n")
-}
+use crate::WsFrameHeader;
 
 pub fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> (WsFrameHeader, &'a [u8]) {
     let fin = (buf[0] & 0b10000000) >> 7;
@@ -56,6 +34,7 @@ pub fn parse_ws_frame_header<'a>(buf: &'a [u8]) -> (WsFrameHeader, &'a [u8]) {
             mask: mask == 1,
             masking_key,
             payload_len,
+            offset: 0
         },
         &buf[offset..],
     )
