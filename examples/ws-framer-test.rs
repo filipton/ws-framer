@@ -8,7 +8,7 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use rand::RngCore;
-use ws_framer::{structs::WsMessage, WsFramer};
+use ws_framer::{structs::WsMessage, RngProvider, WsFramer};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -110,22 +110,18 @@ pub fn start_server(ip: &str) -> Result<()> {
 
 pub fn start_client(ip: &str) -> Result<()> {
     let mut buf = vec![0; 10240];
-    let mut rng_gen = |buff: &mut [u8]| {
-        rand::thread_rng().fill_bytes(buff);
-    };
 
-    let mut framer = WsFramer::new(true, &mut rng_gen);
+    let mut framer = WsFramer::<StdRandom>::new(true, &mut buf);
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(framer.gen_connect_packet(&mut buf, ip, "/", None))?;
-    client.write_all(framer.gen_connect_packet(&mut buf, ip, "/", None))?;
+    client.write_all(&framer.gen_connect_packet(ip, "/", None))?;
 
     let mut buf = [0; 1024];
     let n = client.read(&mut buf)?;
     println!("resp_n: {n}");
     println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
 
-    //client.write_all(&framer.text("Lorem"));
+    client.write_all(&framer.text("Lorem"))?;
     /*
     let frame = WsMessage::Text("Lorem".to_string())
         .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
@@ -138,4 +134,11 @@ pub fn start_client(ip: &str) -> Result<()> {
     client.write_all(&frame.0[..frame.1])?;
 
     Ok(())
+}
+
+pub struct StdRandom;
+impl ws_framer::RngProvider for StdRandom {
+    fn random_u32() -> u32 {
+        rand::thread_rng().next_u32()
+    }
 }
