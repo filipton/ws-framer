@@ -7,8 +7,8 @@ use syn::{parse::Parser, punctuated::Punctuated, Expr, Lit, Token};
 pub fn base64_impl(item: TokenStream) -> TokenStream {
     let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
     let args = parser.parse(item).unwrap();
-    if args.len() != 3 {
-        panic!("This macro requires 3 arguments (structName, \"CHARSET\", padding)")
+    if args.len() != 4 {
+        panic!("This macro requires 3 arguments (structName, \"CHARSET\", padding, std)")
     }
 
     let struct_name = if let Expr::Path(struct_name_expr) = args.get(0).unwrap() {
@@ -41,6 +41,16 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
         }
     } else {
         panic!("Third argument not a Expr::Lit!");
+    };
+
+    let use_std = if let Expr::Lit(std_expr) = args.get(3).unwrap() {
+        if let Lit::Bool(std_val) = &std_expr.lit {
+            std_val.value()
+        } else {
+            panic!("Fourth argument not a bool!");
+        }
+    } else {
+        panic!("Fourth argument not a Expr::Lit!");
     };
 
     let encode_map = charset.chars().collect::<Vec<_>>();
@@ -98,6 +108,25 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
         },
     };
 
+    let use_std_tokens = match use_std {
+        true => quote! {
+            pub fn encode(input: &[u8]) -> String {
+                let mut output = vec![0; Self::encode_len(input.len())];
+                Self::encode_slice(input, &mut output);
+
+                String::from_utf8(output).expect("Base64 utf8 error")
+            }
+
+            pub fn decode(input: &str) -> Vec<u8> {
+                let mut output = vec![0; Self::decode_len(input.len())];
+                let n = Self::decode_slice(input.as_bytes(), &mut output);
+
+                output[..n].to_vec()
+            }
+        },
+        false => quote! {},
+    };
+
     let encode_map_len = encode_map.len();
     quote! {
         pub struct #struct_name;
@@ -110,13 +139,6 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
                 #(#decode_map)*
             ];
 
-
-            pub fn encode(input: &[u8]) -> String {
-                let mut output = vec![0; Self::encode_len(input.len())];
-                Self::encode_slice(input, &mut output);
-
-                String::from_utf8(output).expect("Base64 utf8 error")
-            }
 
             pub fn encode_slice(input: &[u8], output: &mut [u8]) {
                 if Self::encode_len(input.len()) > output.len() {
@@ -161,13 +183,6 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
                 #pad_token
             }
 
-            pub fn decode(input: &str) -> Vec<u8> {
-                let mut output = vec![0; Self::decode_len(input.len())];
-                let n = Self::decode_slice(input.as_bytes(), &mut output);
-
-                output[..n].to_vec()
-            }
-
             pub fn decode_slice(input: &[u8], output: &mut [u8]) -> usize {
                 let mut out_ptr = 0;
 
@@ -201,6 +216,8 @@ pub fn base64_impl(item: TokenStream) -> TokenStream {
 
                 out_ptr
             }
+
+            #use_std_tokens
 
             pub const fn encode_len(n: usize) -> usize {
                 #encode_len_tokens

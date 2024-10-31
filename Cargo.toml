@@ -9,9 +9,9 @@ edition = "2021"
 name = "ws-framer-test"
 
 [dependencies]
-httparse = { version = "1.9.5", optional = true }
+httparse = { version = "1.9.5", default-features = false, optional = true }
 itoa = { version = "1.0.11", optional = true }
-macros = { path = "./macros" }
+ws-framer-macros = { path = "./macros" }
 
 [dev-dependencies]
 rand = "0.8.5"

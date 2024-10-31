@@ -1,9 +1,10 @@
-use macros::base64_impl;
+use ws_framer_macros::base64_impl;
 
 base64_impl!(
     Base64Pad,
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
-    true
+    true,
+    false
 );
 
 macro_rules! left_rotate {
@@ -33,15 +34,16 @@ fn k(t: u32) -> u32 {
     }
 }
 
-pub fn sha1(input: &[u8]) -> [u8; 20] {
-    let blocks_len = (((input.len() + 8) / 64) + 1) * 64;
-    let mut blocks_tmp = vec![0u8; blocks_len];
-    blocks_tmp[0..input.len()].copy_from_slice(input);
-    blocks_tmp[input.len()] = 0x80;
-    blocks_tmp[blocks_len - 8..blocks_len]
-        .copy_from_slice(&((input.len() * 8) as u64).to_be_bytes());
+pub const fn sha1_blocks_len(len: usize) -> usize {
+    (((len + 8) / 64) + 1) * 64
+}
+
+pub fn sha1(input: &mut [u8], len: usize) -> [u8; 20] {
+    let blocks_len = sha1_blocks_len(len);
+    input[len] = 0x80;
+    input[blocks_len - 8..blocks_len].copy_from_slice(&((len * 8) as u64).to_be_bytes());
     let blocks =
-        unsafe { core::slice::from_raw_parts(blocks_tmp.as_ptr() as *const u32, blocks_len / 4) };
+        unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u32, blocks_len / 4) };
 
     let mut w = [0u32; 80];
     let mut h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];

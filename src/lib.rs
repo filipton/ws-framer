@@ -1,3 +1,5 @@
+#![no_std]
+
 use core::marker::PhantomData;
 use crypto::Base64Pad;
 
@@ -5,8 +7,6 @@ use crypto::Base64Pad;
 use httparse::Header;
 
 mod crypto;
-pub mod server;
-pub mod structs;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -40,6 +40,8 @@ const WS_DEFAULT_HEADERS: [Header; 3] = [
 
 const WS_KEY_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const WS_KEY_B64_LEN: usize = Base64Pad::encode_len(16);
+const WS_HASH_LEN: usize = WS_KEY_GUID.len() + WS_KEY_B64_LEN;
+const SHA1_BLOCKS_LEN: usize = crypto::sha1_blocks_len(WS_HASH_LEN);
 const PROCESSED_WS_KEY_B64_LEN: usize = Base64Pad::encode_len(20);
 const U16_MAX: usize = u16::MAX as usize;
 
@@ -97,12 +99,11 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
             },
         ];
 
-        let headers: &[Header] = match additional_headers {
-            Some(additional_headers) => {
-                &[&WS_DEFAULT_HEADERS[..], &headers, additional_headers].concat()
-            }
-            None => &[&WS_DEFAULT_HEADERS[..], &headers].concat(),
-        };
+        self.append_headers(&WS_DEFAULT_HEADERS, &mut offset);
+        self.append_headers(&headers, &mut offset);
+        if let Some(additional) = additional_headers {
+            self.append_headers(&additional, &mut offset);
+        }
 
         for header in headers {
             self.buf[offset..offset + header.name.len()].copy_from_slice(header.name.as_bytes());
@@ -158,6 +159,22 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
 
         self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
         &self.buf[0..offset + 2]
+    }
+
+    fn append_headers<'b>(&'b mut self, headers: &[Header], offset: &mut usize) {
+        for header in headers {
+            self.buf[*offset..*offset + header.name.len()].copy_from_slice(header.name.as_bytes());
+            *offset += header.name.len();
+
+            self.buf[*offset..*offset + 2].copy_from_slice(b": ");
+            *offset += 2;
+
+            self.buf[*offset..*offset + header.value.len()].copy_from_slice(header.value);
+            *offset += header.value.len();
+
+            self.buf[*offset..*offset + 2].copy_from_slice(b"\r\n");
+            *offset += 2;
+        }
     }
 
     pub fn gen_packet<'b>(&'b mut self, header: WsFrameHeader, data: &[u8]) -> &'b [u8] {
@@ -219,7 +236,7 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
         let payload = match frame {
             WsFrame::Text(data) => data.as_bytes(),
             WsFrame::Binary(data) => data,
-            WsFrame::Close(code, reason) => &[&code.to_be_bytes(), reason.as_bytes()].concat(),
+            WsFrame::Close(code) => &code.to_be_bytes(),
             WsFrame::Ping(data) => data,
             WsFrame::Pong(data) => data,
             WsFrame::Unknown => todo!(),
@@ -248,8 +265,8 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
         self.frame(WsFrame::Binary(data))
     }
 
-    pub fn close<'b>(&'b mut self, code: u16, reason: &str) -> &'b [u8] {
-        self.frame(WsFrame::Close(code, reason))
+    pub fn close<'b>(&'b mut self, code: u16) -> &'b [u8] {
+        self.frame(WsFrame::Close(code))
     }
 
     pub fn ping<'b>(&'b mut self, data: &[u8]) -> &'b [u8] {
@@ -324,7 +341,7 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
 pub enum WsFrame<'a> {
     Text(&'a str),
     Binary(&'a [u8]),
-    Close(u16, &'a str),
+    Close(u16), // REASON IS REMOVED DUE TO no_std RESTRICTIONS
     Ping(&'a [u8]),
     Pong(&'a [u8]),
     Unknown,
@@ -335,7 +352,7 @@ impl<'a> WsFrame<'a> {
         match self {
             WsFrame::Text(_) => 1,
             WsFrame::Binary(_) => 2,
-            WsFrame::Close(..) => 8,
+            WsFrame::Close(_) => 8,
             WsFrame::Ping(_) => 9,
             WsFrame::Pong(_) => 10,
             WsFrame::Unknown => 0,
@@ -353,9 +370,7 @@ impl<'a> WsFrame<'a> {
         match header.opcode {
             1 => Self::Text(unsafe { core::str::from_utf8_unchecked(buf) }),
             2 | 9 | 10 => Self::Binary(buf),
-            8 => Self::Close(u16::from_be_bytes([buf[0], buf[1]]), unsafe {
-                core::str::from_utf8_unchecked(&buf[2..])
-            }),
+            8 => Self::Close(u16::from_be_bytes([buf[0], buf[1]])),
             _ => Self::Unknown,
         }
     }
@@ -372,8 +387,13 @@ pub trait RngProvider {
 }
 
 pub fn process_sec_websocket_key(key: &str) -> [u8; PROCESSED_WS_KEY_B64_LEN] {
+    let mut blocks = [0; SHA1_BLOCKS_LEN];
+    blocks[..key.len()].copy_from_slice(key.as_bytes());
+    blocks[key.len()..key.len() + WS_KEY_GUID.len()].copy_from_slice(WS_KEY_GUID.as_bytes());
+
     let mut tmp = [0; PROCESSED_WS_KEY_B64_LEN];
-    let hash = crate::crypto::sha1(&[key.as_bytes(), WS_KEY_GUID.as_bytes()].concat());
+    let hash = crate::crypto::sha1(&mut blocks, WS_HASH_LEN);
     crate::crypto::Base64Pad::encode_slice(&hash, &mut tmp);
+
     tmp
 }

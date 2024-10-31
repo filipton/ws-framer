@@ -1,6 +1,5 @@
 use core::str;
 use std::{
-    collections::HashMap,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
 };
@@ -9,7 +8,7 @@ use anyhow::Result;
 use clap::Parser;
 use httparse::Header;
 use rand::RngCore;
-use ws_framer::{structs::WsMessage, RngProvider, WsFramer};
+use ws_framer::{RngProvider, WsFramer};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -54,7 +53,9 @@ pub fn start_server(ip: &str) -> Result<()> {
 
         let mut headers = [httparse::EMPTY_HEADER; 16];
         let mut req = httparse::Request::new(&mut headers);
-        let res = req.parse(&buf[..n])?;
+        let res = req
+            .parse(&buf[..n])
+            .map_err(|e| anyhow::anyhow!("parse err: {e:?}"))?;
 
         if res.is_partial() {
             println!("[ERROR] HTTP request not complete (partial)");
@@ -144,7 +145,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     */
 
     std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&framer.close(1000, "Test close msg"))?;
+    client.write_all(&framer.close(1000))?;
 
     Ok(())
 }
