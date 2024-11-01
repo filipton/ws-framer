@@ -8,7 +8,7 @@ use anyhow::Result;
 use clap::Parser;
 use httparse::Header;
 use rand::RngCore;
-use ws_framer::{RngProvider, WsFramer};
+use ws_framer::WsFramer;
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -88,14 +88,26 @@ pub fn start_server(ip: &str) -> Result<()> {
 
         stream.write_all(framer.construct_http_resp(101, "Switching Protocols", &headers))?;
 
-        loop {
-            let read_n = stream.read(&mut buf)?;
-            if read_n == 0 {
-                break;
-            }
+        let mut count = 0;
+        'outer: loop {
+            loop {
+                let read_n = stream.read(framer.mut_buf())?;
+                if read_n == 0 {
+                    break 'outer;
+                }
 
-            let res = framer.parse_data(&buf[..read_n]);
-            println!("{res:?}");
+                let res = framer.process_data(read_n);
+                if res.is_some() {
+                    println!("{res:?}");
+                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    break;
+                }
+            }
 
             /*
             let (header, rest) = ws_framer::server::parse_ws_frame_header(&header_buf[..read_n]);
@@ -135,9 +147,35 @@ pub fn start_client(ip: &str) -> Result<()> {
     println!("resp_n: {n}");
     println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
 
-    let frame = framer.text("Lorem");
-    println!("{:?}", frame);
-    client.write_all(&frame)?;
+    let mut peek_buf = [0; 1];
+    let mut count = 0;
+    'outer: loop {
+        client.write_all(&framer.text("Lorem"))?;
+        let pn = client.peek(&mut peek_buf)?;
+
+        if pn > 0 {
+            loop {
+                let read_n = client.read(framer.mut_buf())?;
+                if read_n == 0 {
+                    break 'outer;
+                }
+
+                let res = framer.process_data(read_n);
+                if res.is_some() {
+                    println!("recv: {res:?}");
+                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
+                    count += 1;
+                    break;
+                }
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
     /*
     let frame = WsMessage::Text("Lorem".to_string())
         .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
