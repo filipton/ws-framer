@@ -93,3 +93,29 @@ pub fn sha1(input: &mut [u8], len: usize) -> [u8; 20] {
     let digest = unsafe { core::slice::from_raw_parts(tmp.as_ptr() as *const u8, 20) };
     digest.try_into().unwrap()
 }
+
+pub fn process_sec_websocket_key(key: &str) -> [u8; crate::consts::PROCESSED_WS_KEY_B64_LEN] {
+    let mut blocks = [0; crate::consts::SHA1_BLOCKS_LEN];
+    blocks[..key.len()].copy_from_slice(key.as_bytes());
+    blocks[key.len()..key.len() + crate::consts::WS_KEY_GUID.len()]
+        .copy_from_slice(crate::consts::WS_KEY_GUID.as_bytes());
+
+    let mut tmp = [0; crate::consts::PROCESSED_WS_KEY_B64_LEN];
+    let hash = crate::crypto::sha1(&mut blocks, crate::consts::WS_HASH_LEN);
+    crate::crypto::Base64Pad::encode_slice(&hash, &mut tmp);
+
+    tmp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_sec_ws_key() {
+        assert_eq!(
+            process_sec_websocket_key("dGhlIHNhbXBsZSBub25jZQ=="),
+            b"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=".as_ref()
+        );
+    }
+}

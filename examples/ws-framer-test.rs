@@ -8,7 +8,7 @@ use anyhow::Result;
 use clap::Parser;
 use httparse::Header;
 use rand::RngCore;
-use ws_framer::WsFramer;
+use ws_framer::{WsRxFramer, WsTxFramer};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -45,8 +45,10 @@ pub fn start_server(ip: &str) -> Result<()> {
     while let Ok((mut stream, addr)) = listener.accept() {
         println!("Client connected: {addr}");
 
-        let mut buf = vec![0; 10240];
-        let mut framer = WsFramer::<StdRandom>::new(false, &mut buf);
+        let mut rx_buf = vec![0; 10240];
+        let mut tx_buf = vec![0; 10240];
+        let mut rx_framer = WsRxFramer::new(&mut rx_buf);
+        let mut tx_framer = WsTxFramer::<StdRandom>::new(false, &mut tx_buf);
 
         let mut buf = [0; 4096];
         let n = stream.read(&mut buf)?;
@@ -86,49 +88,18 @@ pub fn start_server(ip: &str) -> Result<()> {
             },
         ];
 
-        stream.write_all(framer.construct_http_resp(101, "Switching Protocols", &headers))?;
-
-        let mut count = 0;
-        'outer: loop {
-            loop {
-                let read_n = stream.read(framer.mut_buf())?;
-                if read_n == 0 {
-                    break 'outer;
-                }
-
-                let res = framer.process_data(read_n);
-                if res.is_some() {
-                    println!("{res:?}");
-                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    stream.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    break;
-                }
+        stream.write_all(tx_framer.generate_http_response(101, "Switching Protocols", &headers))?;
+        loop {
+            let read_n = stream.read(rx_framer.mut_buf())?;
+            if read_n == 0 {
+                break;
             }
 
-            /*
-            let (header, rest) = ws_framer::server::parse_ws_frame_header(&header_buf[..read_n]);
-            println!("header: {header:?}, rest: {rest:?}");
-            let mut buf = vec![0; header.payload_len];
-            buf[..rest.len()].copy_from_slice(rest);
-            stream.read_exact(&mut buf[rest.len()..header.payload_len])?;
-
-            let ws_frame = ws_framer::structs::WsMessage::from_data(&header, &mut buf);
-            println!("recv_ws_frame: {ws_frame:?}");
-
-            let mut echoed_header = header.clone();
-            echoed_header.mask = false;
-
-            let mut out_buf = vec![0; header.payload_len + 14 - rest.len()];
-            /*
-            let ws_frame_n =
-                ws_framer::client::generate_ws_frame(echoed_header, &buf, &mut out_buf);
-            _ = stream.write_all(&out_buf[..ws_frame_n]);
-            */
-            */
+            let res = rx_framer.process_data(read_n);
+            if res.is_some() {
+                println!("{res:?}");
+                stream.write_all(&tx_framer.frame(res.unwrap()))?;
+            }
         }
     }
 
@@ -136,56 +107,42 @@ pub fn start_server(ip: &str) -> Result<()> {
 }
 
 pub fn start_client(ip: &str) -> Result<()> {
-    let mut buf = vec![0; 10240];
-    let mut framer = WsFramer::<StdRandom>::new(true, &mut buf);
+    let mut rx_buf = vec![0; 10240];
+    let mut tx_buf = vec![0; 10240];
+    let mut rx_framer = WsRxFramer::new(&mut rx_buf);
+    let mut tx_framer = WsTxFramer::<StdRandom>::new(true, &mut tx_buf);
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(&framer.gen_connect_packet(ip, "/", None))?;
+    client.write_all(&tx_framer.generate_http_upgrade(ip, "/", None))?;
 
-    let mut buf = [0; 1024];
-    let n = client.read(&mut buf)?;
-    println!("resp_n: {n}");
-    println!("buf: {:?}", core::str::from_utf8(&buf[..n]));
+    let mut buf = [0; 4096];
+    loop {
+        let n = client.read(&mut buf)?;
 
-    let mut peek_buf = [0; 1];
-    let mut count = 0;
-    'outer: loop {
-        client.write_all(&framer.text("Lorem"))?;
-        let pn = client.peek(&mut peek_buf)?;
+        let mut headers = [httparse::EMPTY_HEADER; 16];
+        let mut resp = httparse::Response::new(&mut headers);
+        let res = resp
+            .parse(&buf[..n])
+            .map_err(|e| anyhow::anyhow!("parse err: {e:?}"))?;
 
-        if pn > 0 {
-            loop {
-                let read_n = client.read(framer.mut_buf())?;
-                if read_n == 0 {
-                    break 'outer;
-                }
-
-                let res = framer.process_data(read_n);
-                if res.is_some() {
-                    println!("recv: {res:?}");
-                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    client.write_all(&framer.text(&format!("{count}Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum pulvinar porta arcu, at accumsan risus. Interdum et malesuada fames ac ante ipsum primis in faucibus. Cras feugiat, nibh nec vestibulum scelerisque, sem neque vestibulum sem, et lobortis justo tellus et ligula. Phasellus sed eleifend tortor. Morbi lacinia lacus nec ipsum imperdiet eleifend bibendum in ipsum. Suspendisse in lacus et sem ultrices rhoncus quis sit amet enim. Praesent maximus enim non pretium fringilla.{count}")))?;
-                    count += 1;
-                    break;
-                }
+        if res.is_complete() {
+            let offset = res.unwrap();
+            if n - offset > 0 {
+                rx_framer.mut_buf()[..n - offset].copy_from_slice(&buf[offset..n]);
+                rx_framer.revolve_write_offset(n - offset);
             }
+            break;
         }
+    }
 
+    loop {
+        client.write_all(&tx_framer.text("Lorem"))?;
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    /*
-    let frame = WsMessage::Text("Lorem".to_string())
-        .to_data(true, Some(&mut || rand::thread_rng().next_u32()));
-    client.write_all(&frame.0[..frame.1])?;
-    */
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&framer.close(1000))?;
-
-    Ok(())
+    //std::thread::sleep(std::time::Duration::from_secs(1));
+    //client.write_all(&tx_framer.close(1000))?;
+    //Ok(())
 }
 
 pub struct StdRandom;
