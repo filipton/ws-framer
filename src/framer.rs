@@ -34,7 +34,15 @@ impl<'a> WsRxFramer<'a> {
 
         if res.is_complete() {
             let code = resp.code.clone();
-            let offset = res.unwrap();
+            let mut offset = res.unwrap();
+            for header in resp.headers {
+                if header.name == "Content-Length" {
+                    let content_length =
+                        usize::from_str_radix(core::str::from_utf8(header.value).ok()?, 10).ok()?;
+
+                    offset += content_length;
+                }
+            }
 
             unsafe {
                 core::ptr::copy(
@@ -44,6 +52,7 @@ impl<'a> WsRxFramer<'a> {
                 );
             }
 
+            self.write_offset -= offset;
             return code;
         }
 

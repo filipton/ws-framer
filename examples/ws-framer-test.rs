@@ -89,6 +89,7 @@ pub fn start_server(ip: &str) -> Result<()> {
         ];
 
         stream.write_all(tx_framer.generate_http_response(101, "Switching Protocols", &headers))?;
+        stream.write_all(&tx_framer.text("Hello"))?;
         loop {
             let read_n = stream.read(rx_framer.mut_buf())?;
             if read_n == 0 {
@@ -125,6 +126,20 @@ pub fn start_client(ip: &str) -> Result<()> {
     }
 
     loop {
+        /*
+        loop {
+            let read_n = client.read(rx_framer.mut_buf())?;
+            if read_n == 0 {
+                break;
+            }
+
+            let res = rx_framer.process_data(read_n);
+            if res.is_some() {
+                println!("{res:?}");
+                client.write_all(&tx_framer.frame(res.unwrap()))?;
+            }
+        }
+        */
         client.write_all(&tx_framer.text("Lorem"))?;
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
