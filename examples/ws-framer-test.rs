@@ -114,23 +114,12 @@ pub fn start_client(ip: &str) -> Result<()> {
 
     let mut client = TcpStream::connect(ip)?;
     client.write_all(&tx_framer.generate_http_upgrade(ip, "/", None))?;
-
-    let mut buf = [0; 4096];
     loop {
-        let n = client.read(&mut buf)?;
+        let n = client.read(rx_framer.mut_buf())?;
+        let res = rx_framer.process_http_response(n);
 
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut resp = httparse::Response::new(&mut headers);
-        let res = resp
-            .parse(&buf[..n])
-            .map_err(|e| anyhow::anyhow!("parse err: {e:?}"))?;
-
-        if res.is_complete() {
-            let offset = res.unwrap();
-            if n - offset > 0 {
-                rx_framer.mut_buf()[..n - offset].copy_from_slice(&buf[offset..n]);
-                rx_framer.revolve_write_offset(n - offset);
-            }
+        if let Some(code) = res {
+            println!("http_resp_code: {code}");
             break;
         }
     }

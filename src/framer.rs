@@ -24,6 +24,32 @@ impl<'a> WsRxFramer<'a> {
         }
     }
 
+    #[cfg(feature = "http")]
+    pub fn process_http_response<'b>(&'b mut self, n: usize) -> Option<u16> {
+        self.write_offset += n;
+
+        let mut headers = [httparse::EMPTY_HEADER; 16];
+        let mut resp = httparse::Response::new(&mut headers);
+        let res = resp.parse(&self.buf[..self.write_offset]).ok()?;
+
+        if res.is_complete() {
+            let code = resp.code.clone();
+            let offset = res.unwrap();
+
+            unsafe {
+                core::ptr::copy(
+                    self.buf.as_ptr().offset(offset as isize),
+                    self.buf.as_mut_ptr(),
+                    self.write_offset - offset,
+                );
+            }
+
+            return code;
+        }
+
+        None
+    }
+
     pub fn process_data<'b>(&'b mut self, n: usize) -> Option<WsFrame<'b>> {
         self.write_offset += n;
         if self.shift {
