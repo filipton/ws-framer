@@ -352,6 +352,13 @@ impl<'a, RG: RngProvider> WsFramer<'a, RG> {
     pub fn mut_buf<'b>(&'b mut self) -> &'b mut [u8] {
         self.buf[self.write_offset..].as_mut()
     }
+
+    pub fn reset(&mut self) {
+        self.current_header = None;
+        self.read_offset = 0;
+        self.write_offset = 0;
+        self.packet_size = 0;
+    }
 }
 
 #[allow(dead_code)]
@@ -387,8 +394,10 @@ impl<'a> WsFrame<'a> {
 
         match header.opcode {
             1 => Self::Text(unsafe { core::str::from_utf8_unchecked(buf) }),
-            2 | 9 | 10 => Self::Binary(buf),
+            2 => Self::Binary(buf),
             8 => Self::Close(u16::from_be_bytes([buf[0], buf[1]])),
+            9 => Self::Ping(buf),
+            10 => Self::Pong(buf),
             _ => Self::Unknown,
         }
     }
