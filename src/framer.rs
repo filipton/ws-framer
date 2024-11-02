@@ -191,20 +191,6 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
             self.append_headers(&additional, &mut offset);
         }
 
-        for header in headers {
-            self.buf[offset..offset + header.name.len()].copy_from_slice(header.name.as_bytes());
-            offset += header.name.len();
-
-            self.buf[offset..offset + 2].copy_from_slice(b": ");
-            offset += 2;
-
-            self.buf[offset..offset + header.value.len()].copy_from_slice(header.value);
-            offset += header.value.len();
-
-            self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
-            offset += 2;
-        }
-
         self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
         &self.buf[0..offset + 2]
     }
@@ -229,20 +215,7 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
         offset += 2;
 
-        for header in headers {
-            self.buf[offset..offset + header.name.len()].copy_from_slice(header.name.as_bytes());
-            offset += header.name.len();
-
-            self.buf[offset..offset + 2].copy_from_slice(b": ");
-            offset += 2;
-
-            self.buf[offset..offset + header.value.len()].copy_from_slice(header.value);
-            offset += header.value.len();
-
-            self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
-            offset += 2;
-        }
-
+        self.append_headers(&headers, &mut offset);
         self.buf[offset..offset + 2].copy_from_slice(b"\r\n");
         &self.buf[0..offset + 2]
     }
