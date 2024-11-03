@@ -38,6 +38,10 @@ pub const fn sha1_blocks_len(len: usize) -> usize {
     (((len + 8) / 64) + 1) * 64
 }
 
+/// Calculate sha1 hash for given input
+///
+/// WARN: input buffer should be padded to length,
+/// so len and input.len() are different
 pub fn sha1(input: &mut [u8], len: usize) -> [u8; 20] {
     let blocks_len = sha1_blocks_len(len);
     input[len] = 0x80;
@@ -94,6 +98,10 @@ pub fn sha1(input: &mut [u8], len: usize) -> [u8; 20] {
     digest.try_into().unwrap()
 }
 
+/// Changes key (input) that is retreived by server from Sec-WebSocket-Key
+/// into another string that is then sent by server as Sec-WebSocket-Accept header
+///
+/// Can be also used by client to verify accept header
 pub fn process_sec_websocket_key(key: &str) -> [u8; crate::consts::PROCESSED_WS_KEY_B64_LEN] {
     let mut blocks = [0; crate::consts::SHA1_BLOCKS_LEN];
     blocks[..key.len()].copy_from_slice(key.as_bytes());

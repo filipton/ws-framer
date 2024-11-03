@@ -3,12 +3,21 @@ use core::marker::PhantomData;
 #[cfg(feature = "http")]
 use httparse::Header;
 
+/// Framer used to retrieve data (websocket frames and http responses)
 pub struct WsRxFramer<'a> {
+    /// Internal buffer
     buf: &'a mut [u8],
 
+    /// Header for frame that is currently parsed
     current_header: Option<WsFrameHeader>,
+
+    /// Offset in internal buffer (for writing responses from server)
     write_offset: usize,
+
+    /// Calculated current frame packet end offset
     current_packet_end: usize,
+
+    /// If old frame should be disposed from internal buffer in next call
     shift: bool,
 }
 
@@ -139,10 +148,15 @@ impl<'a> WsRxFramer<'a> {
     }
 }
 
+/// Framer used to send data (websocket frames and http upgrade requests)
 pub struct WsTxFramer<'a, RG: RngProvider> {
+    /// Internal buffer
     buf: &'a mut [u8],
+
+    /// Boolean indicating if frames sent should be masked
     mask: bool,
 
+    /// Rng provider phantom data
     rng_provider: core::marker::PhantomData<RG>,
 }
 

@@ -1,4 +1,8 @@
 #[derive(Debug, PartialEq)]
+/// Struct that stores parsed websocket url result
+///
+/// Example input:
+/// ws://localhost:321/dsa
 pub struct WsUrl<'a> {
     pub host: &'a str,
     pub ip: &'a str,
@@ -9,6 +13,7 @@ pub struct WsUrl<'a> {
 }
 
 impl WsUrl<'_> {
+    /// Parse ws url string
     pub fn from_str<'a>(ws_url: &'a str) -> Option<WsUrl<'a>> {
         let (secure, host_start_offset) = if ws_url.starts_with("ws://") {
             (false, 5)

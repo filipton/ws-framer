@@ -10,6 +10,7 @@ mod framer;
 mod url;
 
 #[derive(Debug, Clone)]
+/// Websocket frame header
 pub struct WsFrameHeader {
     pub fin: bool,
     pub rsv1: bool,
@@ -24,6 +25,8 @@ pub struct WsFrameHeader {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
+/// Websocket frame (packet)
+/// Stores reference to inner framer buffer
 pub enum WsFrame<'a> {
     Text(&'a str),
     Binary(&'a [u8]),
@@ -34,6 +37,7 @@ pub enum WsFrame<'a> {
 }
 
 impl<'a> WsFrame<'a> {
+    /// Return opcode for frame
     pub fn opcode(&self) -> u8 {
         match self {
             WsFrame::Text(_) => 1,
@@ -45,6 +49,7 @@ impl<'a> WsFrame<'a> {
         }
     }
 
+    /// Internal function to parse frame from header and buffer data
     pub(crate) fn from_data(header: &WsFrameHeader, buf: &'a mut [u8]) -> Self {
         if header.mask {
             for (i, x) in buf.iter_mut().enumerate() {
@@ -64,6 +69,8 @@ impl<'a> WsFrame<'a> {
     }
 }
 
+/// Trait used for random generation
+/// Used to implement on different no-std platforms
 pub trait RngProvider {
     fn random_u32() -> u32;
     fn random_buf(buf: &mut [u8]) {
