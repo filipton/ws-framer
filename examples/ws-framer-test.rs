@@ -111,7 +111,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     let mut rx_buf = vec![0; 10240];
     let mut tx_buf = vec![0; 10240];
     let mut rx_framer = WsRxFramer::new(&mut rx_buf);
-    let mut tx_framer = WsTxFramer::<StdRandom>::new(true, &mut tx_buf);
+    let mut tx_framer = WsTxFramer::<StdRandom>::new(false, &mut tx_buf);
 
     let mut client = TcpStream::connect(ip)?;
     client.write_all(&tx_framer.generate_http_upgrade(ip, "/", None))?;
@@ -125,6 +125,11 @@ pub fn start_client(ip: &str) -> Result<()> {
         }
     }
 
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    client.write_all(&tx_framer.close(1000, "Connection closed!"))?;
+    Ok(())
+
+    /*
     loop {
         /*
         loop {
@@ -143,6 +148,7 @@ pub fn start_client(ip: &str) -> Result<()> {
         client.write_all(&tx_framer.text("Lorem"))?;
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
+    */
 
     //std::thread::sleep(std::time::Duration::from_secs(1));
     //client.write_all(&tx_framer.close(1000))?;

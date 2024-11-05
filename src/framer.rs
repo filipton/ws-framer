@@ -250,7 +250,7 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         }
     }
 
-    pub fn generate_packet<'b>(&'b mut self, header: WsFrameHeader, data: &[u8]) -> &'b [u8] {
+    pub fn generate_packet<'b>(&'b mut self, header: &WsFrameHeader, data: &[u8]) -> &'b [u8] {
         let first_byte = (header.fin as u8) << 7
             | (header.rsv1 as u8) << 6
             | (header.rsv2 as u8) << 5
@@ -300,18 +300,41 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         &self.buf[..offset]
     }
 
+    fn append_packet_data<'b>(
+        &'b mut self,
+        header: &WsFrameHeader,
+        data: &[u8],
+        mut offset: usize,
+    ) -> &'b [u8] {
+        if header.mask {
+            for d in data
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| x ^ header.masking_key[i % 4])
+            {
+                self.buf[offset] = d;
+                offset += 1;
+            }
+        } else {
+            self.buf[offset..offset + data.len()].copy_from_slice(data);
+            offset += data.len();
+        }
+
+        &self.buf[..offset]
+    }
+
     pub fn frame<'b>(&'b mut self, frame: WsFrame<'_>) -> &'b [u8] {
         let mut masking_key = [0; 4];
         if self.mask {
             RG::random_buf(&mut masking_key);
         }
 
-        let payload = match frame {
-            WsFrame::Text(data) => data.as_bytes(),
-            WsFrame::Binary(data) => data,
-            WsFrame::Close(code) => &code.to_be_bytes(),
-            WsFrame::Ping(data) => data,
-            WsFrame::Pong(data) => data,
+        let (payload, size) = match frame {
+            WsFrame::Text(data) => (data.as_bytes(), data.as_bytes().len()),
+            WsFrame::Binary(data) => (data, data.len()),
+            WsFrame::Close(code, reason) => (&code.to_be_bytes()[..], 2 + reason.as_bytes().len()),
+            WsFrame::Ping(data) => (data, data.len()),
+            WsFrame::Pong(data) => (data, data.len()),
             WsFrame::Unknown => todo!(),
         };
 
@@ -323,11 +346,20 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
             opcode: frame.opcode(),
             mask: self.mask,
             masking_key,
-            payload_len: payload.len(),
+            payload_len: size,
             offset: 0,
         };
 
-        self.generate_packet(header, payload)
+        let data = if let WsFrame::Close(_, reason) = frame {
+            let data = self.generate_packet(&header, payload);
+            let data_len = data.len();
+
+            self.append_packet_data(&header, reason.as_bytes(), data_len)
+        } else {
+            self.generate_packet(&header, payload)
+        };
+
+        data
     }
 
     pub fn text<'b>(&'b mut self, data: &str) -> &'b [u8] {
@@ -338,8 +370,8 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         self.frame(WsFrame::Binary(data))
     }
 
-    pub fn close<'b>(&'b mut self, code: u16) -> &'b [u8] {
-        self.frame(WsFrame::Close(code))
+    pub fn close<'b>(&'b mut self, code: u16, reason: &str) -> &'b [u8] {
+        self.frame(WsFrame::Close(code, reason))
     }
 
     pub fn ping<'b>(&'b mut self, data: &[u8]) -> &'b [u8] {

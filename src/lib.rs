@@ -30,7 +30,7 @@ pub struct WsFrameHeader {
 pub enum WsFrame<'a> {
     Text(&'a str),
     Binary(&'a [u8]),
-    Close(u16), // REASON IS REMOVED DUE TO no_std RESTRICTIONS
+    Close(u16, &'a str),
     Ping(&'a [u8]),
     Pong(&'a [u8]),
     Unknown,
@@ -42,7 +42,7 @@ impl<'a> WsFrame<'a> {
         match self {
             WsFrame::Text(_) => 1,
             WsFrame::Binary(_) => 2,
-            WsFrame::Close(_) => 8,
+            WsFrame::Close(..) => 8,
             WsFrame::Ping(_) => 9,
             WsFrame::Pong(_) => 10,
             WsFrame::Unknown => 0,
@@ -61,7 +61,9 @@ impl<'a> WsFrame<'a> {
         match header.opcode {
             1 => Self::Text(unsafe { core::str::from_utf8_unchecked(buf) }),
             2 => Self::Binary(buf),
-            8 => Self::Close(u16::from_be_bytes([buf[0], buf[1]])),
+            8 => Self::Close(u16::from_be_bytes([buf[0], buf[1]]), unsafe {
+                core::str::from_utf8_unchecked(&buf[2..])
+            }),
             9 => Self::Ping(buf),
             10 => Self::Pong(buf),
             _ => Self::Unknown,
