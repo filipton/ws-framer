@@ -91,15 +91,22 @@ pub fn start_server(ip: &str) -> Result<()> {
         stream.write_all(tx_framer.generate_http_response(101, "Switching Protocols", &headers))?;
         stream.write_all(&tx_framer.text("Hello"))?;
         loop {
-            let read_n = stream.read(rx_framer.mut_buf())?;
+            let mut read_n = stream.read(rx_framer.mut_buf())?;
             if read_n == 0 {
                 break;
             }
 
-            let res = rx_framer.process_data(read_n);
-            if res.is_some() {
-                println!("{res:?}");
-                stream.write_all(&tx_framer.frame(res.unwrap()))?;
+            loop {
+                let res = rx_framer.process_data(read_n);
+                if res.is_some() {
+                    read_n = 0;
+                    println!("{res:?}");
+                    stream.write_all(&tx_framer.frame(res.unwrap()))?;
+
+                    continue;
+                }
+
+                break;
             }
         }
     }
@@ -124,6 +131,12 @@ pub fn start_client(ip: &str) -> Result<()> {
             break;
         }
     }
+
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&tx_framer.text("Hello"));
+    buf.extend_from_slice(&tx_framer.text("Frind"));
+    buf.extend_from_slice(&tx_framer.ping(&[]));
+    client.write_all(&buf)?;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
     client.write_all(&tx_framer.close(1000, "Connection closed!"))?;
