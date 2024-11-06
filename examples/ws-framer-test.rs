@@ -91,22 +91,15 @@ pub fn start_server(ip: &str) -> Result<()> {
         stream.write_all(tx_framer.generate_http_response(101, "Switching Protocols", &headers))?;
         stream.write_all(&tx_framer.text("Hello"))?;
         loop {
-            let mut read_n = stream.read(rx_framer.mut_buf())?;
+            let read_n = stream.read(rx_framer.mut_buf())?;
             if read_n == 0 {
                 break;
             }
 
-            loop {
-                let res = rx_framer.process_data(read_n);
-                if res.is_some() {
-                    read_n = 0;
-                    println!("{res:?}");
-                    stream.write_all(&tx_framer.frame(res.unwrap()))?;
-
-                    continue;
-                }
-
-                break;
+            rx_framer.revolve_write_offset(read_n);
+            while let Some(frame) = rx_framer.process_data() {
+                println!("{frame:?}");
+                stream.write_all(&tx_framer.frame(frame))?;
             }
         }
     }

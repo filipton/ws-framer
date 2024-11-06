@@ -68,8 +68,7 @@ impl<'a> WsRxFramer<'a> {
         None
     }
 
-    pub fn process_data<'b>(&'b mut self, n: usize) -> Option<WsFrame<'b>> {
-        self.write_offset += n;
+    pub fn process_data<'b>(&'b mut self) -> Option<WsFrame<'b>> {
         if self.shift {
             // shift all data left (dispose parsed frame data)
             unsafe {
