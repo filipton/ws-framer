@@ -69,6 +69,18 @@ impl<'a> WsFrame<'a> {
             _ => Self::Unknown,
         }
     }
+
+    /// Helper to return data bytes from frame (if you dont care about frame type)
+    pub fn data(&self) -> &'a [u8] {
+        match self {
+            WsFrame::Text(str) => str.as_bytes(),
+            WsFrame::Binary(byt) => byt,
+            WsFrame::Close(_, reason) => reason.as_bytes(),
+            WsFrame::Ping(byt) => byt,
+            WsFrame::Pong(byt) => byt,
+            WsFrame::Unknown => &[],
+        }
+    }
 }
 
 /// Trait used for random generation
