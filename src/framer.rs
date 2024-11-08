@@ -361,6 +361,11 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         data
     }
 
+    #[cfg(feature = "alloc")]
+    pub fn frame_owned<'b>(&'b mut self, frame: crate::WsFrameOwned) -> &'b [u8] {
+        self.frame(frame.into_ref())
+    }
+
     pub fn text<'b>(&'b mut self, data: &str) -> &'b [u8] {
         self.frame(WsFrame::Text(data))
     }

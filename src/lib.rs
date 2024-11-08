@@ -4,6 +4,9 @@ pub use crypto::process_sec_websocket_key;
 pub use framer::{WsRxFramer, WsTxFramer};
 pub use url::WsUrl;
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 mod consts;
 mod crypto;
 mod framer;
@@ -33,6 +36,20 @@ pub enum WsFrame<'a> {
     Close(u16, &'a str),
     Ping(&'a [u8]),
     Pong(&'a [u8]),
+    Unknown,
+}
+
+#[cfg(feature = "alloc")]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+/// Websocket frame (packet)
+/// Owned version of WsFrame
+pub enum WsFrameOwned {
+    Text(alloc::string::String),
+    Binary(alloc::vec::Vec<u8>),
+    Close(u16, alloc::string::String),
+    Ping(alloc::vec::Vec<u8>),
+    Pong(alloc::vec::Vec<u8>),
     Unknown,
 }
 
@@ -79,6 +96,20 @@ impl<'a> WsFrame<'a> {
             WsFrame::Ping(byt) => byt,
             WsFrame::Pong(byt) => byt,
             WsFrame::Unknown => &[],
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> WsFrameOwned {
+    pub fn into_ref(&'a self) -> WsFrame<'a> {
+        match self {
+            WsFrameOwned::Text(string) => WsFrame::Text(&string),
+            WsFrameOwned::Binary(vec) => WsFrame::Binary(&vec),
+            WsFrameOwned::Close(code, reason) => WsFrame::Close(*code, &reason),
+            WsFrameOwned::Ping(vec) => WsFrame::Ping(&vec),
+            WsFrameOwned::Pong(vec) => WsFrame::Pong(&vec),
+            WsFrameOwned::Unknown => WsFrame::Unknown,
         }
     }
 }

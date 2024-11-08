@@ -21,3 +21,4 @@ anyhow = "1.0.91"
 [features]
 default = ["http"]
 http = ["dep:httparse", "dep:itoa"]
+alloc = []
