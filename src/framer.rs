@@ -1,5 +1,4 @@
-use crate::{crypto::Base64Pad, RngProvider, WsFrame, WsFrameHeader};
-use core::marker::PhantomData;
+use crate::{crypto::Base64Pad, WsFrame, WsFrameHeader};
 #[cfg(feature = "http")]
 use httparse::Header;
 
@@ -148,25 +147,17 @@ impl<'a> WsRxFramer<'a> {
 }
 
 /// Framer used to send data (websocket frames and http upgrade requests)
-pub struct WsTxFramer<'a, RG: RngProvider> {
+pub struct WsTxFramer<'a> {
     /// Internal buffer
     buf: &'a mut [u8],
 
     /// Boolean indicating if frames sent should be masked
     mask: bool,
-
-    /// Rng provider phantom data
-    rng_provider: core::marker::PhantomData<RG>,
 }
 
-impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
+impl<'a> WsTxFramer<'a> {
     pub fn new(mask: bool, buf: &'a mut [u8]) -> Self {
-        Self {
-            buf,
-            mask,
-
-            rng_provider: PhantomData,
-        }
+        Self { buf, mask }
     }
 
     #[cfg(feature = "http")]
@@ -177,7 +168,7 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
         additional_headers: Option<&[Header]>,
     ) -> &'b [u8] {
         let mut ws_key = [0u8; 16];
-        RG::random_buf(&mut ws_key);
+        _ = getrandom::getrandom(&mut ws_key);
         let mut ws_key_b64 = [0u8; crate::consts::WS_KEY_B64_LEN];
         Base64Pad::encode_slice(&ws_key, &mut ws_key_b64);
 
@@ -325,7 +316,7 @@ impl<'a, RG: RngProvider> WsTxFramer<'a, RG> {
     pub fn frame<'b>(&'b mut self, frame: WsFrame<'_>) -> &'b [u8] {
         let mut masking_key = [0; 4];
         if self.mask {
-            RG::random_buf(&mut masking_key);
+            _ = getrandom::getrandom(&mut masking_key);
         }
 
         let (payload, size) = match frame {

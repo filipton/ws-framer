@@ -113,15 +113,3 @@ impl<'a> WsFrameOwned {
         }
     }
 }
-
-/// Trait used for random generation
-/// Used to implement on different no-std platforms
-pub trait RngProvider {
-    fn random_u32() -> u32;
-    fn random_buf(buf: &mut [u8]) {
-        for chunk in buf.chunks_mut(4) {
-            let len = chunk.len();
-            chunk[..].copy_from_slice(&Self::random_u32().to_be_bytes()[..len]);
-        }
-    }
-}

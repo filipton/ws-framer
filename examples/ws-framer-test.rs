@@ -7,7 +7,6 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use httparse::Header;
-use rand::RngCore;
 use ws_framer::{WsRxFramer, WsTxFramer};
 
 #[derive(Parser, Debug)]
@@ -48,7 +47,7 @@ pub fn start_server(ip: &str) -> Result<()> {
         let mut rx_buf = vec![0; 10240];
         let mut tx_buf = vec![0; 10240];
         let mut rx_framer = WsRxFramer::new(&mut rx_buf);
-        let mut tx_framer = WsTxFramer::<StdRandom>::new(false, &mut tx_buf);
+        let mut tx_framer = WsTxFramer::new(false, &mut tx_buf);
 
         let mut buf = [0; 4096];
         let n = stream.read(&mut buf)?;
@@ -111,7 +110,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     let mut rx_buf = vec![0; 10240];
     let mut tx_buf = vec![0; 10240];
     let mut rx_framer = WsRxFramer::new(&mut rx_buf);
-    let mut tx_framer = WsTxFramer::<StdRandom>::new(false, &mut tx_buf);
+    let mut tx_framer = WsTxFramer::new(true, &mut tx_buf);
 
     let mut client = TcpStream::connect(ip)?;
     client.write_all(&tx_framer.generate_http_upgrade(ip, "/", None))?;
@@ -127,7 +126,7 @@ pub fn start_client(ip: &str) -> Result<()> {
 
     let mut buf = Vec::new();
     buf.extend_from_slice(&tx_framer.text("Hello"));
-    buf.extend_from_slice(&tx_framer.text("Frind"));
+    buf.extend_from_slice(&tx_framer.text("Friend"));
     buf.extend_from_slice(&tx_framer.ping(&[]));
     client.write_all(&buf)?;
 
@@ -159,11 +158,4 @@ pub fn start_client(ip: &str) -> Result<()> {
     //std::thread::sleep(std::time::Duration::from_secs(1));
     //client.write_all(&tx_framer.close(1000))?;
     //Ok(())
-}
-
-pub struct StdRandom;
-impl ws_framer::RngProvider for StdRandom {
-    fn random_u32() -> u32 {
-        rand::thread_rng().next_u32()
-    }
 }
