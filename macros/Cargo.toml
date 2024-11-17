@@ -2,6 +2,9 @@
 name = "ws-framer-macros"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Simple no-std framer for websockets (with alloc feature) - internal macros"
+repository = "https://github.com/filipton/ws-framer"
 
 [lib]
 proc-macro = true
