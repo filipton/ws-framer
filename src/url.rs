@@ -83,6 +83,16 @@ impl WsUrlOwned {
             secure: ws_url.secure,
         }
     }
+
+    pub fn as_ref<'a>(&'a self) -> WsUrl<'a> {
+        WsUrl {
+            host: &self.host,
+            ip: &self.ip,
+            port: self.port,
+            path: &self.path,
+            secure: self.secure,
+        }
+    }
 }
 
 #[cfg(test)]

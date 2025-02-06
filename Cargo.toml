@@ -1,6 +1,6 @@
 [package]
 name = "ws-framer"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 description = "Simple no-std framer for websockets (with alloc feature)"
@@ -23,6 +23,6 @@ clap = { version = "4.5.28", features = ["derive"] }
 anyhow = "1.0.95"
 
 [features]
-default = ["http"]
+default = ["http", "alloc"]
 http = ["dep:httparse", "dep:itoa"]
 alloc = []
