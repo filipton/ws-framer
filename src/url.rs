@@ -59,6 +59,32 @@ impl WsUrl<'_> {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[derive(Debug, PartialEq)]
+pub struct WsUrlOwned {
+    pub host: alloc::string::String,
+    pub ip: alloc::string::String,
+    pub port: u16,
+
+    pub path: alloc::string::String,
+    pub secure: bool,
+}
+
+#[cfg(feature = "alloc")]
+impl WsUrlOwned {
+    pub fn new(ws_url: &WsUrl<'_>) -> Self {
+        use crate::alloc::string::ToString;
+
+        Self {
+            host: ws_url.host.to_string(),
+            ip: ws_url.ip.to_string(),
+            port: ws_url.port,
+            path: ws_url.path.to_string(),
+            secure: ws_url.secure,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

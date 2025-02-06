@@ -113,7 +113,7 @@ pub fn start_client(ip: &str) -> Result<()> {
     let mut tx_framer = WsTxFramer::new(true, &mut tx_buf);
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(&tx_framer.generate_http_upgrade(ip, "/", None))?;
+    client.write_all(&tx_framer.generate_http_upgrade("debica.fkmtime.com", "/?id=2469858181&ver=D1737832232&chip=esp32c3&firmware=STATION", None))?;
     loop {
         let n = client.read(rx_framer.mut_buf())?;
         let res = rx_framer.process_http_response(n);
@@ -124,6 +124,7 @@ pub fn start_client(ip: &str) -> Result<()> {
         }
     }
 
+    /*
     let mut buf = Vec::new();
     buf.extend_from_slice(&tx_framer.text("Hello"));
     buf.extend_from_slice(&tx_framer.text("Friend"));
@@ -133,27 +134,25 @@ pub fn start_client(ip: &str) -> Result<()> {
     std::thread::sleep(std::time::Duration::from_secs(1));
     client.write_all(&tx_framer.close(1000, "Connection closed!"))?;
     Ok(())
+    */
 
-    /*
     loop {
-        /*
         loop {
             let read_n = client.read(rx_framer.mut_buf())?;
             if read_n == 0 {
                 break;
             }
 
-            let res = rx_framer.process_data(read_n);
+            rx_framer.revolve_write_offset(read_n);
+            let res = rx_framer.process_data();
             if res.is_some() {
                 println!("{res:?}");
                 client.write_all(&tx_framer.frame(res.unwrap()))?;
             }
         }
-        */
-        client.write_all(&tx_framer.text("Lorem"))?;
+        //client.write_all(&tx_framer.text("Lorem"))?;
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    */
 
     //std::thread::sleep(std::time::Duration::from_secs(1));
     //client.write_all(&tx_framer.close(1000))?;

@@ -5,6 +5,9 @@ pub use framer::{WsRxFramer, WsTxFramer};
 pub use url::WsUrl;
 
 #[cfg(feature = "alloc")]
+pub use url::WsUrlOwned;
+
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 mod consts;
