@@ -168,7 +168,7 @@ impl<'a> WsTxFramer<'a> {
         additional_headers: Option<&[Header]>,
     ) -> &'b [u8] {
         let mut ws_key = [0u8; 16];
-        _ = getrandom::getrandom(&mut ws_key);
+        _ = getrandom::fill(&mut ws_key);
         let mut ws_key_b64 = [0u8; crate::consts::WS_KEY_B64_LEN];
         Base64Pad::encode_slice(&ws_key, &mut ws_key_b64);
 
@@ -316,7 +316,7 @@ impl<'a> WsTxFramer<'a> {
     pub fn frame<'b>(&'b mut self, frame: WsFrame<'_>) -> &'b [u8] {
         let mut masking_key = [0; 4];
         if self.mask {
-            _ = getrandom::getrandom(&mut masking_key);
+            _ = getrandom::fill(&mut masking_key);
         }
 
         let (payload, size) = match frame {

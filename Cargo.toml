@@ -1,6 +1,6 @@
 [package]
 name = "ws-framer"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 license = "MIT"
 description = "Simple no-std framer for websockets (with alloc feature)"
@@ -12,7 +12,7 @@ repository = "https://github.com/filipton/ws-framer"
 name = "ws-framer-test"
 
 [dependencies]
-getrandom = "0.2.15"
+getrandom = "0.3.1"
 httparse = { version = "1.10.0", default-features = false, optional = true }
 itoa = { version = "1.0.14", optional = true }
 ws-framer-macros = { path = "./macros", version = "0.1.0" }
