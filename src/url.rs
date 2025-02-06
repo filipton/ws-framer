@@ -40,10 +40,15 @@ impl WsUrl<'_> {
 
         let mut host_split = host.split(':');
         let ip = host_split.next()?;
-        let port = host_split
-            .next()
-            .and_then(|p_str| u16::from_str_radix(p_str, 10).ok())
-            .unwrap_or(if secure { 443 } else { 80 });
+        let port = if let Some(port_str) = host_split.next() {
+            u16::from_str_radix(port_str, 10).ok()?
+        } else {
+            //default ports
+            match secure {
+                true => 443,
+                false => 80,
+            }
+        };
 
         if host_split.count() > 0 {
             return None;
@@ -188,6 +193,9 @@ mod tests {
                 secure: true
             })
         );
+
+        assert_eq!(WsUrl::from_str("ws://127.0.0.1:d123"), None);
+        assert_eq!(WsUrl::from_str("ws://127.0.0.1:123d"), None);
 
         assert_eq!(WsUrl::from_str("wsc://127.0.0.1/cxz/ewq"), None);
         assert_eq!(WsUrl::from_str("ws://127.0.0.1:4321:123/cxz/ewq"), None);
