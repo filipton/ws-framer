@@ -168,7 +168,8 @@ impl<'a> WsTxFramer<'a> {
         additional_headers: Option<&[Header]>,
     ) -> &'b [u8] {
         let mut ws_key = [0u8; 16];
-        _ = getrandom::fill(&mut ws_key);
+        crate::rng_fill(&mut ws_key);
+
         let mut ws_key_b64 = [0u8; crate::consts::WS_KEY_B64_LEN];
         Base64Pad::encode_slice(&ws_key, &mut ws_key_b64);
 
@@ -316,7 +317,7 @@ impl<'a> WsTxFramer<'a> {
     pub fn frame<'b>(&'b mut self, frame: WsFrame<'_>) -> &'b [u8] {
         let mut masking_key = [0; 4];
         if self.mask {
-            _ = getrandom::fill(&mut masking_key);
+            crate::rng_fill(&mut masking_key);
         }
 
         let (payload, size) = match frame {
@@ -350,6 +351,68 @@ impl<'a> WsTxFramer<'a> {
         };
 
         data
+    }
+
+    pub fn partial_frame<'b>(
+        &'b mut self,
+        frame: &WsFrame<'_>,
+        offset: &mut usize,
+    ) -> (&'b [u8], bool) {
+        let mut masking_key = [0; 4];
+        if self.mask {
+            crate::rng_fill(&mut masking_key);
+        }
+
+        let (payload, size) = match frame {
+            WsFrame::Text(data) => (data.as_bytes(), data.as_bytes().len()),
+            WsFrame::Binary(data) => (*data, data.len()),
+            WsFrame::Close(code, reason) => (&code.to_be_bytes()[..], 2 + reason.as_bytes().len()),
+            WsFrame::Ping(data) => (*data, data.len()),
+            WsFrame::Pong(data) => (*data, data.len()),
+            WsFrame::Unknown => todo!(),
+        };
+
+        let payload = &payload[*offset..];
+        let mut size = size.saturating_sub(*offset);
+        let splitted = size + 16 > self.buf.len();
+
+        let mut header = WsFrameHeader {
+            fin: true,
+            rsv1: false,
+            rsv2: false,
+            rsv3: false,
+            opcode: frame.opcode(),
+            mask: self.mask,
+            masking_key,
+            payload_len: size,
+            offset: 0,
+        };
+
+        if splitted {
+            if *offset != 0 {
+                header.opcode = 0;
+            }
+
+            size = size.min(self.buf.len() - 16);
+            header.fin = false;
+            header.payload_len = size;
+        } else if *offset > 0 {
+            header.opcode = 0;
+            header.fin = true;
+        }
+
+        *offset += size;
+        let data = if let WsFrame::Close(_, reason) = frame {
+            // BUG: close frames shouldnt be spllited
+            let data = self.generate_packet(&header, &payload[..size]);
+            let data_len = data.len();
+
+            self.append_packet_data(&header, reason.as_bytes(), data_len)
+        } else {
+            self.generate_packet(&header, &payload[..size])
+        };
+
+        (data, splitted)
     }
 
     #[cfg(feature = "alloc")]

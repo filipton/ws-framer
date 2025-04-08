@@ -116,3 +116,15 @@ impl<'a> WsFrameOwned {
         }
     }
 }
+
+pub(crate) fn rng_fill(buf: &mut [u8]) {
+    #[cfg(feature = "getrandom02")]
+    {
+        _ = getrandom02::getrandom(buf);
+    }
+
+    #[cfg(feature = "getrandom03")]
+    {
+        _ = getrandom03::fill(buf);
+    }
+}
