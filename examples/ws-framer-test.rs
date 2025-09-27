@@ -118,7 +118,8 @@ pub fn start_client(ip: &str) -> Result<()> {
         let n = client.read(rx_framer.mut_buf())?;
         let res = rx_framer.process_http_response(n);
 
-        if let Some(code) = res {
+        if let Some(res) = res {
+            let code = res.status_code;
             println!("http_resp_code: {code}");
             break;
         }

@@ -20,6 +20,20 @@ pub struct WsRxFramer<'a> {
     shift: bool,
 }
 
+#[cfg(feature = "alloc")]
+pub struct HttpHeaderOwned {
+    pub name: alloc::string::String,
+    pub value: alloc::string::String,
+}
+
+#[cfg(feature = "http")]
+pub struct HttpResponse {
+    pub status_code: u16,
+
+    #[cfg(feature = "alloc")]
+    pub headers: alloc::vec::Vec<HttpHeaderOwned>,
+}
+
 impl<'a> WsRxFramer<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
         Self {
@@ -33,7 +47,7 @@ impl<'a> WsRxFramer<'a> {
     }
 
     #[cfg(feature = "http")]
-    pub fn process_http_response<'b>(&'b mut self, n: usize) -> Option<u16> {
+    pub fn process_http_response<'b>(&'b mut self, n: usize) -> Option<HttpResponse> {
         self.write_offset += n;
 
         let mut headers = [httparse::EMPTY_HEADER; 16];
@@ -43,12 +57,23 @@ impl<'a> WsRxFramer<'a> {
         if res.is_complete() {
             let code = resp.code.clone();
             let mut offset = res.unwrap();
+
+            #[cfg(feature = "alloc")]
+            let mut headers_alloc = alloc::vec::Vec::<HttpHeaderOwned>::new();
             for header in resp.headers {
                 if header.name == "Content-Length" {
                     let content_length =
                         usize::from_str_radix(core::str::from_utf8(header.value).ok()?, 10).ok()?;
 
                     offset += content_length;
+                }
+
+                #[cfg(feature = "alloc")]
+                if let Ok(value) = core::str::from_utf8(header.value) {
+                    headers_alloc.push(HttpHeaderOwned {
+                        name: alloc::string::ToString::to_string(&header.name),
+                        value: alloc::string::ToString::to_string(&value),
+                    });
                 }
             }
 
@@ -61,7 +86,19 @@ impl<'a> WsRxFramer<'a> {
             }
 
             self.write_offset -= offset;
-            return code;
+
+            #[cfg(not(feature = "alloc"))]
+            if let Some(code) = code {
+                return Some(HttpResponse { status_code: code });
+            }
+
+            #[cfg(feature = "alloc")]
+            if let Some(code) = code {
+                return Some(HttpResponse {
+                    status_code: code,
+                    headers: headers_alloc,
+                });
+            }
         }
 
         None
