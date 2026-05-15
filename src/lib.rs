@@ -127,4 +127,9 @@ pub(crate) fn rng_fill(buf: &mut [u8]) {
     {
         _ = getrandom03::fill(buf);
     }
+
+    #[cfg(feature = "getrandom04")]
+    {
+        _ = getrandom04::fill(buf);
+    }
 }

@@ -333,12 +333,13 @@ impl<'a> WsTxFramer<'a> {
         header: &WsFrameHeader,
         data: &[u8],
         mut offset: usize,
+        mask_offset: usize,
     ) -> &'b [u8] {
         if header.mask {
             for d in data
                 .iter()
                 .enumerate()
-                .map(|(i, &x)| x ^ header.masking_key[i % 4])
+                .map(|(i, &x)| x ^ header.masking_key[(i + mask_offset) % 4])
             {
                 self.buf[offset] = d;
                 offset += 1;
@@ -379,10 +380,10 @@ impl<'a> WsTxFramer<'a> {
         };
 
         let data = if let WsFrame::Close(_, reason) = frame {
-            let data = self.generate_packet(&header, payload);
+            let data = self.generate_packet(&header, &payload[..2]);
             let data_len = data.len();
 
-            self.append_packet_data(&header, reason.as_bytes(), data_len)
+            self.append_packet_data(&header, reason.as_bytes(), data_len, 2)
         } else {
             self.generate_packet(&header, payload)
         };
@@ -440,11 +441,10 @@ impl<'a> WsTxFramer<'a> {
 
         *offset += size;
         let data = if let WsFrame::Close(_, reason) = frame {
-            // BUG: close frames shouldnt be spllited
-            let data = self.generate_packet(&header, &payload[..size]);
+            let data = self.generate_packet(&header, &payload[..2]);
             let data_len = data.len();
 
-            self.append_packet_data(&header, reason.as_bytes(), data_len)
+            self.append_packet_data(&header, reason.as_bytes(), data_len, 2)
         } else {
             self.generate_packet(&header, &payload[..size])
         };
