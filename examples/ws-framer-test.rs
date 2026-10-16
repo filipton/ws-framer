@@ -1,13 +1,16 @@
-use core::str;
+//! Echo server / client over std TCP:
+//! `cargo run --example ws-framer-test -- -m server -i 127.0.0.1:4321`
+//! `cargo run --example ws-framer-test -- -m client -i 127.0.0.1:4321`
+
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use httparse::Header;
-use ws_framer::{WsRxFramer, WsTxFramer};
+use ws_framer::{WsFrame, WsRxFramer, WsTxFramer};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -27,51 +30,64 @@ enum Mode {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    println!("{args:?}");
-
     match args.mode {
-        Mode::Server => start_server(&args.ip)?,
-        Mode::Client => start_client(&args.ip)?,
+        Mode::Server => start_server(&args.ip),
+        Mode::Client => start_client(&args.ip),
     }
-
-    Ok(())
 }
 
-pub fn start_server(ip: &str) -> Result<()> {
+/// Reads until the framer yields frames, calling `on_frame` for each; `Ok(false)` on EOF.
+fn pump(
+    stream: &mut TcpStream,
+    rx: &mut WsRxFramer<'_>,
+    mut on_frame: impl FnMut(WsFrame<'_>) -> Result<()>,
+) -> Result<bool> {
+    let n = stream.read(rx.read_buf())?;
+    if n == 0 {
+        return Ok(false);
+    }
+    rx.advance(n);
+    while let Some(frame) = rx.next_frame() {
+        match frame {
+            Ok(frame) => on_frame(frame)?,
+            Err(e) => println!("[rx error] {e:?}"),
+        }
+    }
+    Ok(true)
+}
+
+fn start_server(ip: &str) -> Result<()> {
     let listener = TcpListener::bind(ip)?;
-    println!("Server started on: {ip:?}!");
+    println!("Server started on: {ip}");
 
     while let Ok((mut stream, addr)) = listener.accept() {
         println!("Client connected: {addr}");
-
         let mut rx_buf = vec![0; 10240];
         let mut tx_buf = vec![0; 10240];
-        let mut rx_framer = WsRxFramer::new(&mut rx_buf);
-        let mut tx_framer = WsTxFramer::new(false, &mut tx_buf);
+        let mut rx = WsRxFramer::new(&mut rx_buf);
+        let mut tx = WsTxFramer::new(false, &mut tx_buf);
 
-        let mut buf = [0; 4096];
-        let n = stream.read(&mut buf)?;
-
+        let mut req_buf = [0; 4096];
+        let n = stream.read(&mut req_buf)?;
         let mut headers = [httparse::EMPTY_HEADER; 16];
         let mut req = httparse::Request::new(&mut headers);
-        let res = req
-            .parse(&buf[..n])
-            .map_err(|e| anyhow::anyhow!("parse err: {e:?}"))?;
-
-        if res.is_partial() {
-            println!("[ERROR] HTTP request not complete (partial)");
+        if !req
+            .parse(&req_buf[..n])
+            .map_err(|e| anyhow!("{e:?}"))?
+            .is_complete()
+        {
+            println!("[ERROR] HTTP request not complete");
             continue;
         }
 
-        let sec_ws_key = core::str::from_utf8(
-            req.headers
-                .iter()
-                .find(|x| x.name == "Sec-WebSocket-Key")
-                .unwrap()
-                .value,
-        )?;
-        println!("sec_ws_key: {sec_ws_key}");
-
+        let key = req
+            .headers
+            .iter()
+            .find(|h| h.name.eq_ignore_ascii_case("Sec-WebSocket-Key"))
+            .context("no Sec-WebSocket-Key")?
+            .value;
+        let accept = ws_framer::process_sec_websocket_key(core::str::from_utf8(key)?)
+            .context("invalid Sec-WebSocket-Key")?;
         let headers = [
             Header {
                 name: "Upgrade",
@@ -83,79 +99,61 @@ pub fn start_server(ip: &str) -> Result<()> {
             },
             Header {
                 name: "Sec-WebSocket-Accept",
-                value: &ws_framer::process_sec_websocket_key(sec_ws_key),
+                value: &accept,
             },
         ];
 
-        stream.write_all(tx_framer.generate_http_response(101, "Switching Protocols", &headers))?;
-        stream.write_all(&tx_framer.text("Hello"))?;
-        loop {
-            let read_n = stream.read(rx_framer.mut_buf())?;
-            if read_n == 0 {
-                break;
-            }
+        stream.write_all(
+            tx.http_response(101, "Switching Protocols", &headers)
+                .context("tx buffer too small")?,
+        )?;
+        stream.write_all(tx.text("Hello").context("tx buffer too small")?)?;
 
-            rx_framer.revolve_write_offset(read_n);
-            while let Some(frame) = rx_framer.process_data() {
-                println!("{frame:?}");
-                stream.write_all(&tx_framer.frame(frame))?;
-            }
-        }
+        // echo everything back
+        let mut out_stream = stream.try_clone()?;
+        while pump(&mut stream, &mut rx, |frame| {
+            println!("{frame:?}");
+            let out = tx.frame(frame).context("cannot encode frame")?;
+            Ok(out_stream.write_all(out)?)
+        })? {}
     }
 
     Ok(())
 }
 
-pub fn start_client(ip: &str) -> Result<()> {
+fn start_client(ip: &str) -> Result<()> {
     let mut rx_buf = vec![0; 10240];
     let mut tx_buf = vec![0; 10240];
-    let mut rx_framer = WsRxFramer::new(&mut rx_buf);
-    let mut tx_framer = WsTxFramer::new(true, &mut tx_buf);
+    let mut rx = WsRxFramer::new(&mut rx_buf);
+    let mut tx = WsTxFramer::new(true, &mut tx_buf);
 
     let mut client = TcpStream::connect(ip)?;
-    client.write_all(&tx_framer.generate_http_upgrade("debica.fkmtime.com", "/?id=2469858181&ver=D1737832232&chip=esp32c3&firmware=STATION", None))?;
-    loop {
-        let n = client.read(rx_framer.mut_buf())?;
-        let res = rx_framer.process_http_response(n);
+    client.write_all(
+        tx.http_upgrade_request(ip, "/", &[])
+            .context("tx buffer too small")?,
+    )?;
 
-        if let Some(res) = res {
-            let code = res.status_code;
-            println!("http_resp_code: {code}");
+    loop {
+        let n = client.read(rx.read_buf())?;
+        if n == 0 {
+            return Err(anyhow!("connection closed during handshake"));
+        }
+        rx.advance(n);
+        if let Some(resp) = rx.http_response() {
+            let resp = resp.map_err(|e| anyhow!("bad response: {e:?}"))?;
+            println!("http status: {}", resp.status_code);
+            if !resp.is_websocket_accepted(&tx.accept_key()) {
+                return Err(anyhow!("server did not accept the websocket upgrade"));
+            }
             break;
         }
     }
 
-    /*
-    let mut buf = Vec::new();
-    buf.extend_from_slice(&tx_framer.text("Hello"));
-    buf.extend_from_slice(&tx_framer.text("Friend"));
-    buf.extend_from_slice(&tx_framer.ping(&[]));
-    client.write_all(&buf)?;
+    client.write_all(tx.text("Hello").context("tx buffer too small")?)?;
+    while pump(&mut client, &mut rx, |frame| {
+        println!("{frame:?}");
+        Ok(())
+    })? {}
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    client.write_all(&tx_framer.close(1000, "Connection closed!"))?;
     Ok(())
-    */
-
-    loop {
-        loop {
-            let read_n = client.read(rx_framer.mut_buf())?;
-            if read_n == 0 {
-                break;
-            }
-
-            rx_framer.revolve_write_offset(read_n);
-            let res = rx_framer.process_data();
-            if res.is_some() {
-                println!("{res:?}");
-                client.write_all(&tx_framer.frame(res.unwrap()))?;
-            }
-        }
-        //client.write_all(&tx_framer.text("Lorem"))?;
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-
-    //std::thread::sleep(std::time::Duration::from_secs(1));
-    //client.write_all(&tx_framer.close(1000))?;
-    //Ok(())
 }
